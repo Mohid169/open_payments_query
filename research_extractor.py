@@ -255,29 +255,123 @@ def get_research_payments_for_physician(
         raise
 
 if __name__ == "__main__":
-    # Example usage with configuration for robust file processing
-    csv_file_path = '2018_rsh_payments.csv'
+    # Example usage with multi-year support
     
     # Query parameters
     first_name_to_find = "Jonathan"
     middle_to_find = "Matthew"  # Optional, set to None if not needed
     last_name_to_find = "Vigdorchik"
+    case_sensitive = False  # Set to True for exact case matching
     
-    try:
-        result = get_research_payments_for_physician(
-            csv_file_path, 
-            last_name_to_find,
-            first_name_to_find, 
-            physician_middle=middle_to_find,
-            case_sensitive=False  # Set to True for exact case matching
-        )
+    # Define years to process - typically the index year and two years after
+    years_to_process = [2017, 2018, 2019]
+    
+    # Dictionary to store results by year
+    results_by_year = {}
+    all_npis = set()
+    
+    # Process each year
+    for year in years_to_process:
+        csv_file_path = f'{year}_rsh_payments.csv'
+        logger.info(f"Processing data for year {year} from file {csv_file_path}")
         
-        if isinstance(result, pd.DataFrame):
-            print("\nPayment totals grouped by physician:")
-            print(result.to_string(index=False))
-            print(f"\nTotal research payments: ${result['Total_Payment_USD'].sum():,.2f}")
-        else:
-            print(f"\nTotal research payments for {first_name_to_find} {middle_to_find or ''} {last_name_to_find}: ${result:,.2f}")
+        try:
+            result = get_research_payments_for_physician(
+                csv_file_path, 
+                last_name_to_find,
+                first_name_to_find, 
+                physician_middle=middle_to_find,
+                case_sensitive=case_sensitive
+            )
             
-    except Exception as e:
-        print(f"Error: {str(e)}")
+            results_by_year[year] = result
+            
+            # Collect all unique NPIs across years
+            if isinstance(result, pd.DataFrame):
+                all_npis.update(result['NPI'].tolist())
+                
+        except Exception as e:
+            print(f"Error processing {year} data: {str(e)}")
+            # Continue with other years even if one fails
+            results_by_year[year] = None
+    
+    # Print yearly summaries
+    print(f"\nResearch payments for {first_name_to_find} {middle_to_find or ''} {last_name_to_find}:")
+    print("-" * 80)
+    
+    for year, result in results_by_year.items():
+        if result is None:
+            print(f"{year}: Failed to process")
+        elif isinstance(result, pd.DataFrame):
+            total = result['Total_Payment_USD'].sum()
+            print(f"{year}: ${total:,.2f} across {len(result)} unique identifiers")
+        else:
+            print(f"{year}: ${result:,.2f}")
+    
+    # Create combined multi-year report if we have DataFrame results
+    if any(isinstance(result, pd.DataFrame) for result in results_by_year.values()):
+        # Initialize a DataFrame to hold combined data
+        columns = ['NPI', 'Physician_Name', 'Specialty']
+        for year in years_to_process:
+            columns.append(f'Payment_{year}_USD')
+        columns.append('Total_USD')
+        
+        combined_data = []
+        
+        # For each unique NPI across all years
+        for npi in all_npis:
+            row_data = {'NPI': npi, 'Total_USD': 0.0}
+            
+            # Get physician name and specialty from the first year that has this NPI
+            for year in years_to_process:
+                result = results_by_year[year]
+                if isinstance(result, pd.DataFrame) and npi in result['NPI'].values:
+                    npi_data = result[result['NPI'] == npi].iloc[0]
+                    row_data['Physician_Name'] = npi_data['Physician_Name']
+                    row_data['Specialty'] = npi_data['Specialty']
+                    break
+            else:
+                # If we didn't find a name or specialty (shouldn't happen), use placeholders
+                row_data['Physician_Name'] = 'Unknown'
+                row_data['Specialty'] = 'Unknown'
+            
+            # Fill in payment data for each year
+            for year in years_to_process:
+                result = results_by_year[year]
+                payment = 0.0
+                
+                if isinstance(result, pd.DataFrame) and npi in result['NPI'].values:
+                    payment = result[result['NPI'] == npi].iloc[0]['Total_Payment_USD']
+                
+                row_data[f'Payment_{year}_USD'] = payment
+                row_data['Total_USD'] += payment
+            
+            combined_data.append(row_data)
+        
+        # Create DataFrame and sort by total payment descending
+        combined_df = pd.DataFrame(combined_data)
+        combined_df = combined_df.sort_values('Total_USD', ascending=False)
+        
+        # Print combined report
+        print("\nMulti-Year Payment Summary:")
+        print("-" * 80)
+        
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.width', 1000)
+        pd.set_option('display.float_format', '${:,.2f}'.format)
+        
+        print(combined_df.to_string(index=False))
+        
+        # Print grand total
+        grand_total = combined_df['Total_USD'].sum()
+        print("-" * 80)
+        print(f"Grand Total Across All Years: ${grand_total:,.2f}")
+        
+        # Export to CSV if desired
+        # combined_df.to_csv(f"payments_{last_name_to_find}_{first_name_to_find}.csv", index=False)
+    
+    else:
+        # Simple total if we only have scalar results
+        total_across_years = sum(result for result in results_by_year.values() 
+                               if isinstance(result, (int, float)))
+        print(f"\nTotal research payments across all years: ${total_across_years:,.2f}")
