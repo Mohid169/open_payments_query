@@ -311,13 +311,13 @@ if __name__ == "__main__":
     # Example usage with multi-year support
 
     # Query parameters
-    first_name_to_find = "Jonathan"
-    middle_to_find = "Matthew"  # Optional, set to None if not needed
-    last_name_to_find = "Vigdorchik"
+    first_name_to_find = "Benjamin"
+    middle_to_find = "G"  # Optional, set to None if not needed
+    last_name_to_find = "Domb"
     case_sensitive = False  # Set to True for exact case matching
 
     # Define years to process - typically the index year and two years after
-    years_to_process = [2017, 2018, 2019]
+    years_to_process = [2015, 2014, 2018]
 
     # Dictionary to store results by year
     results_by_year = {}
