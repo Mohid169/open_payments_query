@@ -1,6 +1,9 @@
 import pandas as pd
 import os
 import logging
+import re
+import argparse
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -293,18 +296,84 @@ def get_research_payments_for_physician(
         logger.error(f"Error processing CMS Open Payments file: {str(e)}")
         raise
 
-if __name__ == "__main__":
-    # Example usage with multi-year support
+def parse_name(full_name):
+    """
+    Parse a full name into first, middle, and last name components.
+    Handles various formats and special cases.
     
-    # Query parameters
-    first_name_to_find = "Benjamin"
-    middle_to_find = "G"  # Optional, set to None if not needed
-    last_name_to_find = "Domb"
-    case_sensitive = False  # Set to True for exact case matching
+    Parameters:
+    full_name (str): Full name to parse
     
-    # Define years to process - typically the index year and two years after
-    years_to_process = [2015, 2016]
+    Returns:
+    tuple: (first_name, middle_name, last_name)
+    """
+    # Remove any content in parentheses (like city/state information)
+    full_name = re.sub(r'\([^)]*\)', '', full_name).strip()
     
+    # Split the name into parts
+    parts = full_name.split()
+    
+    # Handle simple cases
+    if len(parts) == 2:
+        # Just first and last name
+        return parts[0], None, parts[1]
+    
+    elif len(parts) == 3:
+        # Standard first, middle, last format
+        return parts[0], parts[1], parts[2]
+    
+    elif len(parts) > 3:
+        # More complex cases - assume first name is first part, 
+        # last name is last part, and everything in between is middle name(s)
+        first_name = parts[0]
+        last_name = parts[-1]
+        middle_name = " ".join(parts[1:-1])
+        return first_name, middle_name, last_name
+    
+    else:
+        # Just return what we have, handle edge cases
+        if len(parts) == 1:
+            return None, None, parts[0]  # Just last name
+        else:
+            return None, None, full_name  # Unknown format
+            
+def read_names_from_file(filename):
+    """
+    Read a list of names from a text file.
+    
+    Parameters:
+    filename (str): Path to the text file containing names
+    
+    Returns:
+    list: List of names from the file
+    """
+    names = []
+    try:
+        with open(filename, 'r') as file:
+            for line in file:
+                name = line.strip()
+                if name:  # Skip empty lines
+                    names.append(name)
+        logger.info(f"Successfully read {len(names)} names from {filename}")
+        return names
+    except Exception as e:
+        logger.error(f"Error reading names file: {str(e)}")
+        return []
+
+def process_physician(first_name, middle_name, last_name, years_to_process, case_sensitive=False):
+    """
+    Process research payments for a single physician across multiple years.
+    
+    Parameters:
+    first_name (str): Physician's first name
+    middle_name (str): Physician's middle name or initial (can be None)
+    last_name (str): Physician's last name
+    years_to_process (list): List of years to process
+    case_sensitive (bool): Whether to use case-sensitive matching
+    
+    Returns:
+    tuple: (combined_df, total_payment, total_entries)
+    """
     # Dictionary to store results by year
     results_by_year = {}
     all_npis = set()
@@ -319,21 +388,21 @@ if __name__ == "__main__":
         
         try:
             # If middle name is provided, check both with and without
-            if middle_to_find:
-                logger.info(f"Checking with middle name: {middle_to_find}")
+            if middle_name:
+                logger.info(f"Checking with middle name: {middle_name}")
                 result_with_middle = get_research_payments_for_physician(
                     csv_file_path, 
-                    last_name_to_find,
-                    first_name_to_find, 
-                    physician_middle=middle_to_find,
+                    last_name,
+                    first_name, 
+                    physician_middle=middle_name,
                     case_sensitive=case_sensitive
                 )
                 
                 logger.info("Checking without middle name")
                 result_without_middle = get_research_payments_for_physician(
                     csv_file_path, 
-                    last_name_to_find,
-                    first_name_to_find, 
+                    last_name,
+                    first_name, 
                     physician_middle=None,
                     case_sensitive=case_sensitive
                 )
@@ -372,8 +441,8 @@ if __name__ == "__main__":
                 # No middle name provided, just check without
                 result = get_research_payments_for_physician(
                     csv_file_path, 
-                    last_name_to_find,
-                    first_name_to_find, 
+                    last_name,
+                    first_name, 
                     physician_middle=None,
                     case_sensitive=case_sensitive
                 )
@@ -395,22 +464,9 @@ if __name__ == "__main__":
                 results_by_year[year] = result
                 
         except Exception as e:
-            print(f"Error processing {year} data: {str(e)}")
+            logger.error(f"Error processing {year} data: {str(e)}")
             # Continue with other years even if one fails
             results_by_year[year] = None
-    
-    # Print yearly summaries
-    print(f"\nResearch payments for {first_name_to_find} {middle_to_find or ''} {last_name_to_find}:")
-    print("-" * 80)
-    
-    for year, result in results_by_year.items():
-        if result is None:
-            print(f"{year}: Failed to process")
-        elif isinstance(result, pd.DataFrame):
-            total = result['Total_Payment_USD'].sum()
-            print(f"{year}: ${total:,.2f} across {len(result)} unique identifiers")
-        else:
-            print(f"{year}: ${result:,.2f}")
     
     # Create combined multi-year report if we have DataFrame results
     if any(isinstance(result, pd.DataFrame) for result in results_by_year.values()):
@@ -460,41 +516,286 @@ if __name__ == "__main__":
         combined_df = pd.DataFrame(combined_data)
         combined_df = combined_df.sort_values('Total_USD', ascending=False)
         
-        # Print combined report
-        print("\nMulti-Year Payment Summary:")
-        print("-" * 80)
-        
-        pd.set_option('display.max_columns', None)
-        pd.set_option('display.width', 1000)
-        pd.set_option('display.float_format', '${:,.2f}'.format)
-        
-        print(combined_df.to_string(index=False))
-        
-        # Print grand total
+        # Calculate totals
         grand_total = combined_df['Total_USD'].sum()
         total_entries = combined_df['Entry_Count'].sum()
-        print("-" * 80)
-        print(f"Grand Total Across All Years: ${grand_total:,.2f} from {total_entries} entries")
         
-        # Create a filename with the physician name and years
-        years_string = f"{min(years_to_process)}-{max(years_to_process)}" if len(years_to_process) > 1 else str(years_to_process[0])
-        output_filename = f"research_payments_{last_name_to_find}_{first_name_to_find}_{years_string}.csv"
+        return combined_df, grand_total, total_entries
+    else:
+        # If no DataFrame results, return a simple total
+        total_across_years = sum(result for result in results_by_year.values() 
+                                if isinstance(result, (int, float)))
+        return None, total_across_years, 0
+
+def process_physician_list(names_file, years_to_process, output_dir=None, case_sensitive=False):
+    """
+    Process a list of physicians from a file and save results to CSV files.
+    
+    Parameters:
+    names_file (str): Path to the file containing physician names
+    years_to_process (list): List of years to process
+    output_dir (str): Directory to save output files (if None, use current directory)
+    case_sensitive (bool): Whether to use case-sensitive name matching
+    """
+    # Read names from file
+    names = read_names_from_file(names_file)
+    if not names:
+        logger.error("No names found in the input file.")
+        return
+    
+    # Create output directory if it doesn't exist
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Prepare summary data
+    years_string = f"{min(years_to_process)}-{max(years_to_process)}" if len(years_to_process) > 1 else str(years_to_process[0])
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    summary_filename = f"payment_summary_{years_string}_{timestamp}.csv"
+    if output_dir:
+        summary_filename = os.path.join(output_dir, summary_filename)
+    
+    summary_data = []
+    
+    # Process each physician
+    for i, name in enumerate(names):
+        logger.info(f"Processing physician {i+1}/{len(names)}: {name}")
         
-        # Export to CSV
-        # Create a copy for export to ensure proper formatting
-        export_df = combined_df.copy()
+        # Parse the name
+        first_name, middle_name, last_name = parse_name(name)
+        if not first_name or not last_name:
+            logger.warning(f"Could not parse name properly: {name}")
+            continue
         
-        # Format currency values without the dollar sign for CSV
+        # Log the parsed name components
+        logger.info(f"Parsed name: First: {first_name}, Middle: {middle_name}, Last: {last_name}")
+        
+        try:
+            # Process this physician
+            combined_df, total_payment, total_entries = process_physician(
+                first_name, middle_name, last_name, years_to_process, case_sensitive
+            )
+            
+            # Initialize summary entry with basic information
+            summary_entry = {
+                'Full_Name': name,
+                'First_Name': first_name,
+                'Middle_Name': middle_name or '',
+                'Last_Name': last_name,
+                'Total_Payment': total_payment,
+                'Total_Entries': total_entries
+            }
+            
+            # Add year-by-year breakdowns
+            # If we have detailed results, get the yearly totals
+            if combined_df is not None and not combined_df.empty:
+                for year in years_to_process:
+                    year_col = f'Payment_{year}_USD'
+                    if year_col in combined_df.columns:
+                        summary_entry[year_col] = combined_df[year_col].sum()
+                    else:
+                        summary_entry[year_col] = 0.0
+            else:
+                # If we don't have detailed results, we can't break down by year
+                for year in years_to_process:
+                    summary_entry[f'Payment_{year}_USD'] = 0.0
+            
+            summary_data.append(summary_entry)
+            
+            # If we got detailed results, save them to a separate CSV
+            if combined_df is not None and not combined_df.empty:
+                # Create a filename based on the physician's name
+                safe_name = re.sub(r'[^\w\s]', '', name).replace(' ', '_')
+                detail_filename = f"research_payments_{safe_name}_{years_string}.csv"
+                if output_dir:
+                    detail_filename = os.path.join(output_dir, detail_filename)
+                
+                # Format currency values without the dollar sign for CSV
+                export_df = combined_df.copy()
+                for year in years_to_process:
+                    export_df[f'Payment_{year}_USD'] = export_df[f'Payment_{year}_USD'].apply(lambda x: f"{x:.2f}")
+                export_df['Total_USD'] = export_df['Total_USD'].apply(lambda x: f"{x:.2f}")
+                
+                # Save to CSV
+                export_df.to_csv(detail_filename, index=False)
+                logger.info(f"Saved detailed results to: {detail_filename}")
+                
+                # Print a summary for this physician
+                print(f"\nResults for {name}:")
+                print(f"Total Payment: ${total_payment:,.2f}")
+                print(f"Total Entries: {total_entries}")
+                print(f"Saved to: {detail_filename}")
+            else:
+                print(f"\nNo detailed results for {name}. Total payment: ${total_payment:,.2f}")
+        
+        except Exception as e:
+            logger.error(f"Error processing physician {name}: {str(e)}")
+            # Add error entry with zero values for all years
+            error_entry = {
+                'Full_Name': name,
+                'First_Name': first_name,
+                'Middle_Name': middle_name or '',
+                'Last_Name': last_name,
+                'Total_Payment': 0,
+                'Total_Entries': 0,
+                'Error': str(e)
+            }
+            for year in years_to_process:
+                error_entry[f'Payment_{year}_USD'] = 0.0
+                
+            summary_data.append(error_entry)
+    
+    # Save summary data to CSV
+    if summary_data:
+        summary_df = pd.DataFrame(summary_data)
+        
+        # Reorder columns to put years in sequence
+        base_cols = ['Full_Name', 'First_Name', 'Middle_Name', 'Last_Name']
+        year_cols = [f'Payment_{year}_USD' for year in sorted(years_to_process)]
+        end_cols = ['Total_Payment', 'Total_Entries']
+        error_col = ['Error'] if 'Error' in summary_df.columns else []
+        
+        col_order = base_cols + year_cols + end_cols + error_col
+        summary_df = summary_df[col_order]
+        
+        # Sort by total payment descending
+        summary_df = summary_df.sort_values('Total_Payment', ascending=False)
+        
+        # Format values for better readability
         for year in years_to_process:
-            export_df[f'Payment_{year}_USD'] = export_df[f'Payment_{year}_USD'].apply(lambda x: f"{x:.2f}")
-        export_df['Total_USD'] = export_df['Total_USD'].apply(lambda x: f"{x:.2f}")
+            col = f'Payment_{year}_USD'
+            summary_df[col] = summary_df[col].apply(lambda x: f"{x:.2f}" if pd.notnull(x) else "0.00")
+            
+        summary_df['Total_Payment'] = summary_df['Total_Payment'].apply(
+            lambda x: f"{x:.2f}" if pd.notnull(x) else "0.00"
+        )
         
         # Save to CSV
-        export_df.to_csv(output_filename, index=False)
-        print(f"\nResults saved to: {output_filename}")
-    
+        summary_df.to_csv(summary_filename, index=False)
+        logger.info(f"Saved summary results to: {summary_filename}")
+        
+        # Print the overall summary
+        print("\nOverall Summary:")
+        print(f"Total Physicians Processed: {len(summary_data)}")
+        
+        # Calculate totals for each year
+        year_totals = {}
+        for year in years_to_process:
+            col = f'Payment_{year}_USD'
+            # Convert back to float for summing
+            year_totals[year] = sum(float(x) for x in summary_df[col] if pd.notnull(x))
+            print(f"Total Payments for {year}: ${year_totals[year]:,.2f}")
+            
+        print(f"Total Payments Across All Years: ${summary_df['Total_Payment'].astype(float).sum():,.2f}")
+        print(f"Total Entries: {summary_df['Total_Entries'].sum()}")
+        print(f"Summary saved to: {summary_filename}")
     else:
-        # Simple total if we only have scalar results
-        total_across_years = sum(result for result in results_by_year.values() 
-                               if isinstance(result, (int, float)))
-        print(f"\nTotal research payments across all years: ${total_across_years:,.2f}")
+        logger.warning("No summary data to save.")
+
+if __name__ == "__main__":
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Extract research payments for physicians from CMS Open Payments data.')
+    
+    # Add arguments
+    parser.add_argument('--names_file', type=str, help='Path to file containing physician names')
+    parser.add_argument('--years', type=int, nargs='+', default=[2015, 2016], help='Years to process')
+    parser.add_argument('--output_dir', type=str, help='Directory to save output files')
+    parser.add_argument('--case_sensitive', action='store_true', help='Use case-sensitive name matching')
+    
+    # Add single physician mode arguments
+    parser.add_argument('--first_name', type=str, help='Physician first name (for single mode)')
+    parser.add_argument('--middle_name', type=str, help='Physician middle name (for single mode)')
+    parser.add_argument('--last_name', type=str, help='Physician last name (for single mode)')
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Check if we should run in batch mode or single physician mode
+    if args.names_file:
+        # Batch mode - process list of physicians from file
+        logger.info(f"Running in batch mode with names from: {args.names_file}")
+        process_physician_list(args.names_file, args.years, args.output_dir, args.case_sensitive)
+    elif args.first_name and args.last_name:
+        # Single physician mode
+        logger.info(f"Running in single physician mode for: {args.first_name} {args.middle_name or ''} {args.last_name}")
+        
+        # Process the physician
+        combined_df, total_payment, total_entries = process_physician(
+            args.first_name, args.middle_name, args.last_name, args.years, args.case_sensitive
+        )
+        
+        # Print results
+        print(f"\nResearch payments for {args.first_name} {args.middle_name or ''} {args.last_name}:")
+        print("-" * 80)
+        print(f"Total Payment: ${total_payment:,.2f}")
+        print(f"Total Entries: {total_entries}")
+        
+        # Save results if we have detailed data
+        if combined_df is not None and not combined_df.empty:
+            # Set up display options
+            pd.set_option('display.max_columns', None)
+            pd.set_option('display.width', 1000)
+            pd.set_option('display.float_format', '${:,.2f}'.format)
+            
+            # Print detailed results
+            print("\nDetailed Results:")
+            print("-" * 80)
+            print(combined_df.to_string(index=False))
+            
+            # Create filename and save to CSV
+            years_string = f"{min(args.years)}-{max(args.years)}" if len(args.years) > 1 else str(args.years[0])
+            output_filename = f"research_payments_{args.last_name}_{args.first_name}_{years_string}.csv"
+            if args.output_dir:
+                if not os.path.exists(args.output_dir):
+                    os.makedirs(args.output_dir)
+                output_filename = os.path.join(args.output_dir, output_filename)
+            
+            # Format for CSV
+            export_df = combined_df.copy()
+            for year in args.years:
+                export_df[f'Payment_{year}_USD'] = export_df[f'Payment_{year}_USD'].apply(lambda x: f"{x:.2f}")
+            export_df['Total_USD'] = export_df['Total_USD'].apply(lambda x: f"{x:.2f}")
+            
+            # Save to CSV
+            export_df.to_csv(output_filename, index=False)
+            print(f"\nResults saved to: {output_filename}")
+    else:
+        # Default example - using hardcoded values
+        print("No arguments provided. Running with example values:")
+        first_name_to_find = "Benjamin"
+        middle_to_find = "G"
+        last_name_to_find = "Domb"
+        years_to_process = [2015, 2016]
+        
+        print(f"Physician: {first_name_to_find} {middle_to_find or ''} {last_name_to_find}")
+        print(f"Years: {years_to_process}")
+        
+        combined_df, total_payment, total_entries = process_physician(
+            first_name_to_find, middle_to_find, last_name_to_find, years_to_process, False
+        )
+        
+        if combined_df is not None:
+            # Set up display options
+            pd.set_option('display.max_columns', None)
+            pd.set_option('display.width', 1000)
+            pd.set_option('display.float_format', '${:,.2f}'.format)
+            
+            # Print detailed results
+            print("\nDetailed Results:")
+            print("-" * 80)
+            print(combined_df.to_string(index=False))
+            
+            # Create filename and save to CSV
+            years_string = f"{min(years_to_process)}-{max(years_to_process)}" if len(years_to_process) > 1 else str(years_to_process[0])
+            output_filename = f"research_payments_{last_name_to_find}_{first_name_to_find}_{years_string}.csv"
+            
+            # Format for CSV
+            export_df = combined_df.copy()
+            for year in years_to_process:
+                export_df[f'Payment_{year}_USD'] = export_df[f'Payment_{year}_USD'].apply(lambda x: f"{x:.2f}")
+            export_df['Total_USD'] = export_df['Total_USD'].apply(lambda x: f"{x:.2f}")
+            
+            # Save to CSV
+            export_df.to_csv(output_filename, index=False)
+            print(f"\nResults saved to: {output_filename}")
+        else:
+            print(f"\nNo detailed results. Total payment: ${total_payment:,.2f}")
