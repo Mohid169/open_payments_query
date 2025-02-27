@@ -476,8 +476,22 @@ if __name__ == "__main__":
         print("-" * 80)
         print(f"Grand Total Across All Years: ${grand_total:,.2f} from {total_entries} entries")
         
-        # Export to CSV if desired
-        # combined_df.to_csv(f"payments_{last_name_to_find}_{first_name_to_find}.csv", index=False)
+        # Create a filename with the physician name and years
+        years_string = f"{min(years_to_process)}-{max(years_to_process)}" if len(years_to_process) > 1 else str(years_to_process[0])
+        output_filename = f"research_payments_{last_name_to_find}_{first_name_to_find}_{years_string}.csv"
+        
+        # Export to CSV
+        # Create a copy for export to ensure proper formatting
+        export_df = combined_df.copy()
+        
+        # Format currency values without the dollar sign for CSV
+        for year in years_to_process:
+            export_df[f'Payment_{year}_USD'] = export_df[f'Payment_{year}_USD'].apply(lambda x: f"{x:.2f}")
+        export_df['Total_USD'] = export_df['Total_USD'].apply(lambda x: f"{x:.2f}")
+        
+        # Save to CSV
+        export_df.to_csv(output_filename, index=False)
+        print(f"\nResults saved to: {output_filename}")
     
     else:
         # Simple total if we only have scalar results
