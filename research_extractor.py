@@ -31,7 +31,8 @@ def get_research_payments_for_physician(
     case_sensitive (bool, optional): Whether to perform case-sensitive name matching
     
     Returns:
-    pd.DataFrame or float: DataFrame with NPIs and associated total payments, or a float if no NPIs found
+    tuple or float: (DataFrame with NPIs and associated total payments, dict of entry counts per NPI),
+                    or a float if no NPIs found
     
     Raises:
     FileNotFoundError: If the CSV file doesn't exist
@@ -275,8 +276,13 @@ def get_research_payments_for_physician(
             # Reorder columns for better readability
             group_totals = group_totals[['NPI', 'Physician_Name', 'Specialty', 'Total_Payment_USD']]
             
+            # Count original entries per NPI
+            npi_entry_counts = {}
+            for npi in group_totals['NPI']:
+                npi_entry_counts[npi] = len(filtered_df[filtered_df['NPI'] == npi])
+            
             logger.info(f"Grouped into {len(group_totals)} unique physicians")
-            return group_totals
+            return group_totals, npi_entry_counts
         else:
             # If grouping failed for some reason, return the overall sum
             total_payment = filtered_df[payment_col].sum()
@@ -297,11 +303,14 @@ if __name__ == "__main__":
     case_sensitive = False  # Set to True for exact case matching
     
     # Define years to process - typically the index year and two years after
-    years_to_process = [2015, 2016]
+    years_to_process = [2015]
     
     # Dictionary to store results by year
     results_by_year = {}
     all_npis = set()
+    
+    # Dictionary to store entry counts by NPI
+    all_entry_counts = {}
     
     # Process each year
     for year in years_to_process:
@@ -317,11 +326,21 @@ if __name__ == "__main__":
                 case_sensitive=case_sensitive
             )
             
-            results_by_year[year] = result
-            
-            # Collect all unique NPIs across years
-            if isinstance(result, pd.DataFrame):
-                all_npis.update(result['NPI'].tolist())
+            # Handle the new return format
+            if isinstance(result, tuple):
+                # Unpack the DataFrame and entry counts
+                df_result, entry_counts = result
+                results_by_year[year] = df_result
+                
+                # Update the global entry counts
+                for npi, count in entry_counts.items():
+                    all_entry_counts[npi] = all_entry_counts.get(npi, 0) + count
+                
+                # Collect all unique NPIs
+                all_npis.update(df_result['NPI'].tolist())
+            else:
+                # Handle scalar result (no matching records found)
+                results_by_year[year] = result
                 
         except Exception as e:
             print(f"Error processing {year} data: {str(e)}")
@@ -344,7 +363,7 @@ if __name__ == "__main__":
     # Create combined multi-year report if we have DataFrame results
     if any(isinstance(result, pd.DataFrame) for result in results_by_year.values()):
         # Initialize a DataFrame to hold combined data
-        columns = ['NPI', 'Physician_Name', 'Specialty']
+        columns = ['NPI', 'Physician_Name', 'Specialty', 'Entry_Count']
         for year in years_to_process:
             columns.append(f'Payment_{year}_USD')
         columns.append('Total_USD')
@@ -353,7 +372,11 @@ if __name__ == "__main__":
         
         # For each unique NPI across all years
         for npi in all_npis:
-            row_data = {'NPI': npi, 'Total_USD': 0.0}
+            row_data = {
+                'NPI': npi, 
+                'Total_USD': 0.0, 
+                'Entry_Count': all_entry_counts.get(npi, 0)  # Use the collected entry counts
+            }
             
             # Get physician name and specialty from the first year that has this NPI
             for year in years_to_process:
@@ -397,8 +420,9 @@ if __name__ == "__main__":
         
         # Print grand total
         grand_total = combined_df['Total_USD'].sum()
+        total_entries = combined_df['Entry_Count'].sum()
         print("-" * 80)
-        print(f"Grand Total Across All Years: ${grand_total:,.2f}")
+        print(f"Grand Total Across All Years: ${grand_total:,.2f} from {total_entries} entries")
         
         # Export to CSV if desired
         # combined_df.to_csv(f"payments_{last_name_to_find}_{first_name_to_find}.csv", index=False)
