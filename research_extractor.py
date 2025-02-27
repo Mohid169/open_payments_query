@@ -298,12 +298,12 @@ if __name__ == "__main__":
     
     # Query parameters
     first_name_to_find = "Benjamin"
-    middle_to_find = "G"# Optional, set to None if not needed
+    middle_to_find = "G"  # Optional, set to None if not needed
     last_name_to_find = "Domb"
     case_sensitive = False  # Set to True for exact case matching
     
     # Define years to process - typically the index year and two years after
-    years_to_process = [2015]
+    years_to_process = [2015, 2016]
     
     # Dictionary to store results by year
     results_by_year = {}
@@ -318,15 +318,67 @@ if __name__ == "__main__":
         logger.info(f"Processing data for year {year} from file {csv_file_path}")
         
         try:
-            result = get_research_payments_for_physician(
-                csv_file_path, 
-                last_name_to_find,
-                first_name_to_find, 
-                physician_middle=middle_to_find,
-                case_sensitive=case_sensitive
-            )
+            # If middle name is provided, check both with and without
+            if middle_to_find:
+                logger.info(f"Checking with middle name: {middle_to_find}")
+                result_with_middle = get_research_payments_for_physician(
+                    csv_file_path, 
+                    last_name_to_find,
+                    first_name_to_find, 
+                    physician_middle=middle_to_find,
+                    case_sensitive=case_sensitive
+                )
+                
+                logger.info("Checking without middle name")
+                result_without_middle = get_research_payments_for_physician(
+                    csv_file_path, 
+                    last_name_to_find,
+                    first_name_to_find, 
+                    physician_middle=None,
+                    case_sensitive=case_sensitive
+                )
+                
+                # Combine results from both searches
+                if isinstance(result_with_middle, tuple) and isinstance(result_without_middle, tuple):
+                    # Both returned DataFrames
+                    df_with_middle, counts_with_middle = result_with_middle
+                    df_without_middle, counts_without_middle = result_without_middle
+                    
+                    # Combine the DataFrames, removing duplicates based on NPI
+                    combined_df = pd.concat([df_with_middle, df_without_middle]).drop_duplicates(subset=['NPI'])
+                    
+                    # Merge entry counts (taking the larger count if duplicates exist)
+                    combined_counts = counts_with_middle.copy()
+                    for npi, count in counts_without_middle.items():
+                        if npi in combined_counts:
+                            combined_counts[npi] = max(combined_counts[npi], count)
+                        else:
+                            combined_counts[npi] = count
+                    
+                    result = (combined_df, combined_counts)
+                    
+                elif isinstance(result_with_middle, tuple):
+                    # Only with_middle search returned DataFrame
+                    result = result_with_middle
+                    
+                elif isinstance(result_without_middle, tuple):
+                    # Only without_middle search returned DataFrame
+                    result = result_without_middle
+                    
+                else:
+                    # Both returned scalar values, use the sum
+                    result = result_with_middle + result_without_middle
+            else:
+                # No middle name provided, just check without
+                result = get_research_payments_for_physician(
+                    csv_file_path, 
+                    last_name_to_find,
+                    first_name_to_find, 
+                    physician_middle=None,
+                    case_sensitive=case_sensitive
+                )
             
-            # Handle the new return format
+            # Handle the result
             if isinstance(result, tuple):
                 # Unpack the DataFrame and entry counts
                 df_result, entry_counts = result
