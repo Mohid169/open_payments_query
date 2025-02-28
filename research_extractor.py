@@ -4,6 +4,9 @@ import logging
 import re
 import argparse
 from datetime import datetime
+import webbrowser
+import json
+from tabulate import tabulate  # Add this dependency for nice console tables
 
 # Set up logging
 logging.basicConfig(
@@ -588,185 +591,560 @@ def process_physician(
         return None, total_across_years, 0
 
 
-def process_physician_list(
-    names_file, years_to_process, output_dir=None, case_sensitive=False
-):
+def generate_html_dashboard(summary_df, physicians_with_multiple_npis, years_to_process, output_dir=None):
+    """
+    Generate an HTML dashboard from the summary data.
+    
+    Parameters:
+    summary_df (DataFrame): DataFrame with summary data
+    physicians_with_multiple_npis (dict): Dictionary of physicians with multiple NPIs
+    years_to_process (list): List of years processed
+    output_dir (str): Output directory
+    
+    Returns:
+    str: Path to the generated HTML file
+    """
+    # Create dashboard filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dashboard_filename = f"dashboard_{timestamp}.html"
+    if output_dir:
+        dashboard_filename = os.path.join(output_dir, dashboard_filename)
+    
+    # Convert year columns to numeric for proper formatting
+    year_cols = [f'Payment_{year}_USD' for year in years_to_process]
+    for col in year_cols + ['Total_Payment']:
+        summary_df[col] = pd.to_numeric(summary_df[col], errors='coerce')
+    
+    # Prepare the HTML content
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Research Payments Dashboard</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            h1, h2 {{ color: #2c3e50; }}
+            table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+            tr:nth-child(even) {{ background-color: #f9f9f9; }}
+            tr:hover {{ background-color: #f5f5f5; }}
+            .alert {{ background-color: #ffdddd; }}
+            .details {{ display: none; padding: 10px; background-color: #f8f8f8; border: 1px solid #ddd; margin: 10px 0; }}
+            .button {{ background-color: #4CAF50; border: none; color: white; padding: 5px 10px; 
+                     text-align: center; text-decoration: none; display: inline-block; 
+                     font-size: 12px; margin: 2px; cursor: pointer; border-radius: 3px; }}
+            .chart-container {{ height: 400px; margin-bottom: 30px; }}
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            function toggleDetails(id) {{
+                var details = document.getElementById(id);
+                if (details.style.display === "none" || !details.style.display) {{
+                    details.style.display = "block";
+                }} else {{
+                    details.style.display = "none";
+                }}
+            }}
+        </script>
+    </head>
+    <body>
+        <h1>Research Payments Dashboard</h1>
+        <p>Generated on {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        
+        <h2>Summary Statistics</h2>
+        <div class="chart-container">
+            <canvas id="paymentsByYearChart"></canvas>
+        </div>
+        
+        <h2>Physicians with Multiple NPIs</h2>
+    """
+    
+    # Add section for physicians with multiple NPIs
+    if physicians_with_multiple_npis:
+        html_content += "<p>The following physicians have multiple NPIs, which may indicate data inconsistencies:</p><ul>"
+        for name, npis in physicians_with_multiple_npis.items():
+            html_content += f"<li><strong>{name}</strong>: {len(npis)} NPIs - "
+            html_content += f"<button class='button' onclick=\"toggleDetails('details_{name.replace(' ', '_')}')\">View Details</button>"
+            html_content += f"<div id='details_{name.replace(' ', '_')}' class='details'>"
+            html_content += "<table><tr><th>NPI</th><th>Specialty</th><th>Entries</th><th>Total Payment</th></tr>"
+            
+            for npi_data in npis:
+                html_content += f"<tr><td>{npi_data['NPI']}</td><td>{npi_data['Specialty']}</td>"
+                html_content += f"<td>{npi_data['Entry_Count']}</td><td>${npi_data['Total_USD']:,.2f}</td></tr>"
+            
+            html_content += "</table></div></li>"
+        
+        html_content += "</ul>"
+    else:
+        html_content += "<p>No physicians with multiple NPIs found.</p>"
+    
+    # Add the summary table
+    html_content += """
+        <h2>Physician Payment Summary</h2>
+        <input type="text" id="searchInput" onkeyup="searchTable()" placeholder="Search for names...">
+        <table id="summaryTable">
+            <thead>
+                <tr>
+                    <th>Physician Name</th>
+    """
+    
+    # Add year columns
+    for year in years_to_process:
+        html_content += f"<th>Payment {year} ($)</th>"
+    
+    html_content += """
+                    <th>Total Payment ($)</th>
+                    <th>Total Entries</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+    
+    # Add data rows
+    for _, row in summary_df.iterrows():
+        name = f"{row['First_Name']} {row['Middle_Name']} {row['Last_Name']}".strip()
+        is_alert = name in physicians_with_multiple_npis
+        
+        html_content += f"<tr class=\"{'alert' if is_alert else ''}\">"
+        html_content += f"<td>{name}</td>"
+        
+        # Add payment data for each year
+        for year in years_to_process:
+            html_content += f"<td>${row[f'Payment_{year}_USD']:,.2f}</td>"
+        
+        html_content += f"<td>${row['Total_Payment']:,.2f}</td>"
+        html_content += f"<td>{row['Total_Entries']}</td>"
+        
+        # Add action button for multiple NPIs
+        if is_alert:
+            html_content += f"<td><button class='button' onclick=\"toggleDetails('details_{name.replace(' ', '_')}')\">View NPIs</button></td>"
+        else:
+            html_content += "<td>-</td>"
+        
+        html_content += "</tr>"
+    
+    # Add JavaScript for chart and search functionality
+    year_totals = {year: summary_df[f'Payment_{year}_USD'].sum() for year in years_to_process}
+    year_totals_json = json.dumps(year_totals)
+    
+    html_content += """
+            </tbody>
+        </table>
+        
+        <script>
+            // Chart for payments by year
+            var ctx = document.getElementById('paymentsByYearChart').getContext('2d');
+            var yearTotals = """ + year_totals_json + """;
+            var years = Object.keys(yearTotals);
+            var totals = Object.values(yearTotals);
+            
+            var chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: years,
+                    datasets: [{
+                        label: 'Total Payments by Year',
+                        data: totals,
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return '$' + context.parsed.y.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Search functionality
+            function searchTable() {
+                var input, filter, table, tr, td, i, txtValue;
+                input = document.getElementById("searchInput");
+                filter = input.value.toUpperCase();
+                table = document.getElementById("summaryTable");
+                tr = table.getElementsByTagName("tr");
+                
+                for (i = 0; i < tr.length; i++) {
+                    td = tr[i].getElementsByTagName("td")[0];
+                    if (td) {
+                        txtValue = td.textContent || td.innerText;
+                        if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                            tr[i].style.display = "";
+                        } else {
+                            tr[i].style.display = "none";
+                        }
+                    }
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """
+    
+    # Write the HTML content to file
+    with open(dashboard_filename, 'w') as f:
+        f.write(html_content)
+    
+    return dashboard_filename
+
+def display_console_dashboard(summary_df, physicians_with_multiple_npis, years_to_process, physician_data_by_name=None):
+    """
+    Display a summary dashboard in the console.
+    
+    Parameters:
+    summary_df (DataFrame): DataFrame with summary data
+    physicians_with_multiple_npis (dict): Dictionary of physicians with multiple NPIs
+    years_to_process (list): List of years processed
+    physician_data_by_name (dict): Dictionary mapping physician names to their DataFrames
+    """
+    print("\n" + "="*80)
+    print(f"{'RESEARCH PAYMENTS DASHBOARD':^80}")
+    print("="*80)
+    
+    # Summary statistics
+    print("\nSUMMARY STATISTICS")
+    print("-"*80)
+    total_physicians = len(summary_df)
+    
+    # Calculate total NPIs safely
+    total_npis = 0
+    if physician_data_by_name:
+        total_npis = sum(1 for _, df in physician_data_by_name.items() if df is not None for _ in df['NPI'].unique())
+    else:
+        # Fallback if physician_data_by_name is not available
+        total_npis = len(physicians_with_multiple_npis)
+    
+    physicians_with_alerts = len(physicians_with_multiple_npis)
+    
+    print(f"Total Physicians Processed: {total_physicians}")
+    print(f"Total Unique NPIs: {total_npis}")
+    print(f"Physicians with Multiple NPIs: {physicians_with_alerts}")
+    
+    # Year-by-year totals
+    print("\nPAYMENTS BY YEAR")
+    print("-"*80)
+    for year in years_to_process:
+        # Convert string to float for summing
+        col = f'Payment_{year}_USD'
+        try:
+            # Try to convert to float if string
+            if summary_df[col].dtype == 'object':
+                year_total = summary_df[col].astype(float).sum()
+            else:
+                year_total = summary_df[col].sum()
+            print(f"{year}: ${year_total:,.2f}")
+        except Exception as e:
+            logger.error(f"Error calculating total for {year}: {str(e)}")
+            print(f"{year}: Error calculating total")
+    
+    # Overall total
+    try:
+        if summary_df['Total_Payment'].dtype == 'object':
+            grand_total = summary_df['Total_Payment'].astype(float).sum()
+        else:
+            grand_total = summary_df['Total_Payment'].sum()
+        print(f"TOTAL: ${grand_total:,.2f}")
+    except Exception as e:
+        logger.error(f"Error calculating grand total: {str(e)}")
+        print("TOTAL: Error calculating")
+    
+    # Alert for physicians with multiple NPIs
+    if physicians_with_multiple_npis:
+        print("\nALERT: PHYSICIANS WITH MULTIPLE NPIs")
+        print("-"*80)
+        for name, npis in physicians_with_multiple_npis.items():
+            print(f"* {name}: {len(npis)} NPIs")
+            print("  NPI Details:")
+            for npi_data in npis:
+                # Convert to float if string
+                total_usd = npi_data['Total_USD']
+                if isinstance(total_usd, str):
+                    try:
+                        total_usd = float(total_usd)
+                    except ValueError:
+                        pass
+                
+                if isinstance(total_usd, (int, float)):
+                    payment_str = f"${total_usd:,.2f}"
+                else:
+                    payment_str = str(total_usd)
+                    
+                print(f"  - NPI: {npi_data['NPI']}, Specialty: {npi_data['Specialty']}, " + 
+                      f"Entries: {npi_data['Entry_Count']}, Total: {payment_str}")
+            print()
+    
+    # Top 10 physicians by payment
+    print("\nTOP 10 PHYSICIANS BY TOTAL PAYMENT")
+    print("-"*80)
+    
+    # Get top 10, handling string conversion
+    if summary_df['Total_Payment'].dtype == 'object':
+        # Convert to float for sorting
+        summary_df['Total_Payment_Float'] = pd.to_numeric(summary_df['Total_Payment'], errors='coerce')
+        top10 = summary_df.nlargest(10, 'Total_Payment_Float')
+    else:
+        top10 = summary_df.nlargest(10, 'Total_Payment')
+    
+    # Create table headers
+    headers = ["Physician Name"]
+    for year in years_to_process:
+        headers.append(f"{year} ($)")
+    headers.extend(["Total ($)", "Entries"])
+    
+    # Create table rows
+    table_data = []
+    for _, row in top10.iterrows():
+        name = f"{row['First_Name']} {row['Middle_Name'] or ''} {row['Last_Name']}".strip()
+        physician_row = [name]
+        
+        # Add payment data for each year
+        for year in years_to_process:
+            col = f'Payment_{year}_USD'
+            # Handle string or float values
+            if row[col] is None:
+                physician_row.append("$0.00")
+            elif isinstance(row[col], (int, float)):
+                physician_row.append(f"${row[col]:,.2f}")
+            else:
+                try:
+                    val = float(row[col])
+                    physician_row.append(f"${val:,.2f}")
+                except (ValueError, TypeError):
+                    physician_row.append(row[col])
+        
+        # Add total and entries
+        if isinstance(row['Total_Payment'], (int, float)):
+            physician_row.append(f"${row['Total_Payment']:,.2f}")
+        else:
+            try:
+                val = float(row['Total_Payment'])
+                physician_row.append(f"${val:,.2f}")
+            except (ValueError, TypeError):
+                physician_row.append(row['Total_Payment'])
+        
+        physician_row.append(str(row['Total_Entries']))
+        table_data.append(physician_row)
+    
+    # Print the table
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+    print("\n" + "="*80)
+
+def process_physician_list(names_file, years_to_process, output_dir=None, case_sensitive=False):
     """
     Process a list of physicians from a file and save results to CSV files.
-
+    
     Parameters:
     names_file (str): Path to the file containing physician names
     years_to_process (list): List of years to process
     output_dir (str): Directory to save output files (if None, use current directory)
     case_sensitive (bool): Whether to use case-sensitive name matching
     """
+    # Initialize physician_data_by_name
+    physician_data_by_name = {}
+    
     # Read names from file
     names = read_names_from_file(names_file)
     if not names:
         logger.error("No names found in the input file.")
         return
-
+    
     # Create output directory if it doesn't exist
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
-
+    
     # Prepare summary data
-    years_string = (
-        f"{min(years_to_process)}-{max(years_to_process)}"
-        if len(years_to_process) > 1
-        else str(years_to_process[0])
-    )
+    years_string = f"{min(years_to_process)}-{max(years_to_process)}" if len(years_to_process) > 1 else str(years_to_process[0])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     summary_filename = f"payment_summary_{years_string}_{timestamp}.csv"
     if output_dir:
         summary_filename = os.path.join(output_dir, summary_filename)
-
+    
     summary_data = []
-
+    
     # Process each physician
     for i, name in enumerate(names):
         logger.info(f"Processing physician {i+1}/{len(names)}: {name}")
-
+        
         # Parse the name
         first_name, middle_name, last_name = parse_name(name)
         if not first_name or not last_name:
             logger.warning(f"Could not parse name properly: {name}")
             continue
-
+        
         # Log the parsed name components
-        logger.info(
-            f"Parsed name: First: {first_name}, Middle: {middle_name}, Last: {last_name}"
-        )
-
+        logger.info(f"Parsed name: First: {first_name}, Middle: {middle_name}, Last: {last_name}")
+        
         try:
             # Process this physician
             combined_df, total_payment, total_entries = process_physician(
                 first_name, middle_name, last_name, years_to_process, case_sensitive
             )
-
+            
+            # Store the physician data for the dashboard
+            full_name = f"{first_name} {middle_name or ''} {last_name}".strip()
+            physician_data_by_name[full_name] = combined_df
+            
             # Initialize summary entry with basic information
             summary_entry = {
-                "Full_Name": name,
-                "First_Name": first_name,
-                "Middle_Name": middle_name or "",
-                "Last_Name": last_name,
-                "Total_Payment": total_payment,
-                "Total_Entries": total_entries,
+                'Full_Name': name,
+                'First_Name': first_name,
+                'Middle_Name': middle_name or '',
+                'Last_Name': last_name,
+                'Total_Payment': total_payment,
+                'Total_Entries': total_entries
             }
-
+            
             # Add year-by-year breakdowns
             # If we have detailed results, get the yearly totals
             if combined_df is not None and not combined_df.empty:
                 for year in years_to_process:
-                    year_col = f"Payment_{year}_USD"
+                    year_col = f'Payment_{year}_USD'
                     if year_col in combined_df.columns:
                         summary_entry[year_col] = combined_df[year_col].sum()
                     else:
                         summary_entry[year_col] = 0.0
-            else:
-                # If we don't have detailed results, we can't break down by year
-                for year in years_to_process:
-                    summary_entry[f"Payment_{year}_USD"] = 0.0
-
+            
             summary_data.append(summary_entry)
-
+            
             # If we got detailed results, save them to a separate CSV
             if combined_df is not None and not combined_df.empty:
                 # Create a filename based on the physician's name
-                safe_name = re.sub(r"[^\w\s]", "", name).replace(" ", "_")
+                safe_name = re.sub(r'[^\w\s]', '', name).replace(' ', '_')
                 detail_filename = f"research_payments_{safe_name}_{years_string}.csv"
                 if output_dir:
                     detail_filename = os.path.join(output_dir, detail_filename)
-
+                
                 # Format currency values without the dollar sign for CSV
                 export_df = combined_df.copy()
                 for year in years_to_process:
-                    export_df[f"Payment_{year}_USD"] = export_df[
-                        f"Payment_{year}_USD"
-                    ].apply(lambda x: f"{x:.2f}")
-                export_df["Total_USD"] = export_df["Total_USD"].apply(
-                    lambda x: f"{x:.2f}"
-                )
-
+                    export_df[f'Payment_{year}_USD'] = export_df[f'Payment_{year}_USD'].apply(lambda x: f"{x:.2f}")
+                export_df['Total_USD'] = export_df['Total_USD'].apply(lambda x: f"{x:.2f}")
+                
                 # Save to CSV
                 export_df.to_csv(detail_filename, index=False)
                 logger.info(f"Saved detailed results to: {detail_filename}")
-
+                
                 # Print a summary for this physician
                 print(f"\nResults for {name}:")
                 print(f"Total Payment: ${total_payment:,.2f}")
                 print(f"Total Entries: {total_entries}")
                 print(f"Saved to: {detail_filename}")
             else:
-                print(
-                    f"\nNo detailed results for {name}. Total payment: ${total_payment:,.2f}"
-                )
-
+                print(f"\nNo detailed results for {name}. Total payment: ${total_payment:,.2f}")
+        
         except Exception as e:
             logger.error(f"Error processing physician {name}: {str(e)}")
             # Add error entry with zero values for all years
             error_entry = {
-                "Full_Name": name,
-                "First_Name": first_name,
-                "Middle_Name": middle_name or "",
-                "Last_Name": last_name,
-                "Total_Payment": 0,
-                "Total_Entries": 0,
-                "Error": str(e),
+                'Full_Name': name,
+                'First_Name': first_name,
+                'Middle_Name': middle_name or '',
+                'Last_Name': last_name,
+                'Total_Payment': 0,
+                'Total_Entries': 0,
+                'Error': str(e)
             }
             for year in years_to_process:
-                error_entry[f"Payment_{year}_USD"] = 0.0
-
+                error_entry[f'Payment_{year}_USD'] = 0.0
+                
             summary_data.append(error_entry)
-
+    
     # Save summary data to CSV
     if summary_data:
         summary_df = pd.DataFrame(summary_data)
-
+        
         # Reorder columns to put years in sequence
-        base_cols = ["Full_Name", "First_Name", "Middle_Name", "Last_Name"]
-        year_cols = [f"Payment_{year}_USD" for year in sorted(years_to_process)]
-        end_cols = ["Total_Payment", "Total_Entries"]
-        error_col = ["Error"] if "Error" in summary_df.columns else []
-
+        base_cols = ['Full_Name', 'First_Name', 'Middle_Name', 'Last_Name']
+        year_cols = [f'Payment_{year}_USD' for year in sorted(years_to_process)]
+        end_cols = ['Total_Payment', 'Total_Entries']
+        error_col = ['Error'] if 'Error' in summary_df.columns else []
+        
         col_order = base_cols + year_cols + end_cols + error_col
         summary_df = summary_df[col_order]
-
+        
         # Sort by total payment descending
-        summary_df = summary_df.sort_values("Total_Payment", ascending=False)
-
+        summary_df = summary_df.sort_values('Total_Payment', ascending=False)
+        
         # Format values for better readability
         for year in years_to_process:
-            col = f"Payment_{year}_USD"
-            summary_df[col] = summary_df[col].apply(
-                lambda x: f"{x:.2f}" if pd.notnull(x) else "0.00"
-            )
-
-        summary_df["Total_Payment"] = summary_df["Total_Payment"].apply(
+            col = f'Payment_{year}_USD'
+            summary_df[col] = summary_df[col].apply(lambda x: f"{x:.2f}" if pd.notnull(x) else "0.00")
+            
+        summary_df['Total_Payment'] = summary_df['Total_Payment'].apply(
             lambda x: f"{x:.2f}" if pd.notnull(x) else "0.00"
         )
-
+        
         # Save to CSV
         summary_df.to_csv(summary_filename, index=False)
         logger.info(f"Saved summary results to: {summary_filename}")
-
-        # Print the overall summary
-        print("\nOverall Summary:")
-        print(f"Total Physicians Processed: {len(summary_data)}")
-
-        # Calculate totals for each year
-        year_totals = {}
-        for year in years_to_process:
-            col = f"Payment_{year}_USD"
-            # Convert back to float for summing
-            year_totals[year] = sum(float(x) for x in summary_df[col] if pd.notnull(x))
-            print(f"Total Payments for {year}: ${year_totals[year]:,.2f}")
-
-        print(
-            f"Total Payments Across All Years: ${summary_df['Total_Payment'].astype(float).sum():,.2f}"
+        
+        # Identify physicians with multiple NPIs
+        physicians_with_multiple_npis = {}
+        
+        for name, df in physician_data_by_name.items():
+            if df is not None and len(df['NPI'].unique()) > 1:
+                # This physician has multiple NPIs
+                npi_data = []
+                for npi in df['NPI'].unique():
+                    npi_rows = df[df['NPI'] == npi]
+                    npi_data.append({
+                        'NPI': npi,
+                        'Specialty': npi_rows.iloc[0]['Specialty'],
+                        'Entry_Count': npi_rows.iloc[0]['Entry_Count'],
+                        'Total_USD': npi_rows['Total_USD'].sum()
+                    })
+                physicians_with_multiple_npis[name] = npi_data
+        
+        # Generate dashboards
+        
+        # Console dashboard
+        display_console_dashboard(
+            summary_df, 
+            physicians_with_multiple_npis, 
+            years_to_process,
+            physician_data_by_name  # Pass the dictionary to the function
         )
-        print(f"Total Entries: {summary_df['Total_Entries'].sum()}")
-        print(f"Summary saved to: {summary_filename}")
+        
+        # HTML dashboard
+        # Convert string values back to numeric for the dashboard
+        for col in ['Total_Payment'] + [f'Payment_{year}_USD' for year in years_to_process]:
+            summary_df[col] = pd.to_numeric(summary_df[col], errors='coerce')
+            
+        dashboard_file = generate_html_dashboard(
+            summary_df, physicians_with_multiple_npis, years_to_process, output_dir
+        )
+        
+        print(f"\nInteractive dashboard saved to: {dashboard_file}")
+        print("Open this file in a web browser to view the interactive dashboard.")
+        
+        # Ask if user wants to open the dashboard immediately
+        try:
+            open_now = input("Open dashboard now? (y/n): ").strip().lower()
+            if open_now == 'y':
+                webbrowser.open('file://' + os.path.abspath(dashboard_file))
+        except Exception as e:
+            logger.error(f"Error opening dashboard: {str(e)}")
     else:
         logger.warning("No summary data to save.")
 
@@ -868,6 +1246,8 @@ if __name__ == "__main__":
             # Save to CSV
             export_df.to_csv(output_filename, index=False)
             print(f"\nResults saved to: {output_filename}")
+        else:
+            print(f"\nNo detailed results. Total payment: ${total_payment:,.2f}")
     else:
         # Default example - using hardcoded values
         print("No arguments provided. Running with example values:")
