@@ -14,7 +14,9 @@ class PhysicianQuery:
     @property
     def display_name(self) -> str:
         return " ".join(
-            part for part in [self.first_name, self.middle_name or "", self.last_name] if part
+            part
+            for part in [self.first_name, self.middle_name or "", self.last_name]
+            if part
         ).strip()
 
 

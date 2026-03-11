@@ -151,9 +151,15 @@ class OpenPaymentsDataset:
             ), self._extract_specialty(row)
 
         for slot in PI_SLOTS:
-            first_name = self._clean_cell(row.get(f"{self.schema.pi_prefix}{slot}_First_Name"))
-            middle_name = self._clean_cell(row.get(f"{self.schema.pi_prefix}{slot}_Middle_Name"))
-            last_name = self._clean_cell(row.get(f"{self.schema.pi_prefix}{slot}_Last_Name"))
+            first_name = self._clean_cell(
+                row.get(f"{self.schema.pi_prefix}{slot}_First_Name")
+            )
+            middle_name = self._clean_cell(
+                row.get(f"{self.schema.pi_prefix}{slot}_Middle_Name")
+            )
+            last_name = self._clean_cell(
+                row.get(f"{self.schema.pi_prefix}{slot}_Last_Name")
+            )
             if first_name and last_name:
                 return (
                     self._join_name(first_name, middle_name, last_name),
@@ -167,7 +173,9 @@ class OpenPaymentsDataset:
 
         specialties = []
         for slot in PI_SLOTS:
-            specialty = self._clean_cell(row.get(f"{self.schema.specialty_prefix}_{slot}"))
+            specialty = self._clean_cell(
+                row.get(f"{self.schema.specialty_prefix}_{slot}")
+            )
             if specialty:
                 specialties.append(specialty)
 

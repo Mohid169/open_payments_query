@@ -12,7 +12,11 @@ import pandas as pd
 from tabulate import tabulate
 
 from research_payments.models import PhysicianResult
-from research_payments.utils import format_currency_columns, safe_filename, year_range_label
+from research_payments.utils import (
+    format_currency_columns,
+    safe_filename,
+    year_range_label,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -58,7 +62,9 @@ def save_single_physician_results(
     years_to_process: Sequence[int],
     output_dir: Optional[str],
 ) -> None:
-    display_name = " ".join(part for part in [first_name, middle_name or "", last_name] if part).strip()
+    display_name = " ".join(
+        part for part in [first_name, middle_name or "", last_name] if part
+    ).strip()
     print(f"\nResearch payments for {display_name}:")
     print("-" * 80)
     print(f"Total Payment: ${result.total_payment:,.2f}")
@@ -77,7 +83,10 @@ def save_single_physician_results(
 
     output_root = Path(output_dir) if output_dir else Path(".")
     output_root.mkdir(parents=True, exist_ok=True)
-    destination = output_root / f"research_payments_{last_name}_{first_name}_{year_range_label(years_to_process)}.csv"
+    destination = (
+        output_root
+        / f"research_payments_{last_name}_{first_name}_{year_range_label(years_to_process)}.csv"
+    )
     save_detail_csv(result.dataframe, years_to_process, destination)
     print(f"\nResults saved to: {destination}")
 
@@ -129,11 +138,18 @@ def display_console_dashboard(
             print()
 
     top10 = summary.nlargest(10, "Total_Payment")
-    headers = ["Physician Name", *[f"{year} ($)" for year in years_to_process], "Total ($)", "Entries"]
+    headers = [
+        "Physician Name",
+        *[f"{year} ($)" for year in years_to_process],
+        "Total ($)",
+        "Entries",
+    ]
     rows = []
     for _, row in top10.iterrows():
         display_name = " ".join(
-            part for part in [row["First_Name"], row["Middle_Name"], row["Last_Name"]] if str(part).strip()
+            part
+            for part in [row["First_Name"], row["Middle_Name"], row["Last_Name"]]
+            if str(part).strip()
         )
         rows.append(
             [
@@ -158,14 +174,19 @@ def generate_html_dashboard(
 ) -> str:
     output_root = Path(output_dir) if output_dir else Path(".")
     output_root.mkdir(parents=True, exist_ok=True)
-    dashboard_path = output_root / f"dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+    dashboard_path = (
+        output_root / f"dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+    )
 
     summary = summary_df.copy()
     payment_columns = [f"Payment_{year}_USD" for year in years_to_process]
     for column in [*payment_columns, "Total_Payment"]:
         summary[column] = pd.to_numeric(summary[column], errors="coerce").fillna(0.0)
 
-    year_totals = {str(year): float(summary[f"Payment_{year}_USD"].sum()) for year in years_to_process}
+    year_totals = {
+        str(year): float(summary[f"Payment_{year}_USD"].sum())
+        for year in years_to_process
+    }
 
     multi_npi_sections = []
     if physicians_with_multiple_npis:
@@ -197,7 +218,9 @@ def generate_html_dashboard(
     table_rows = []
     for _, row in summary.iterrows():
         display_name = " ".join(
-            part for part in [row["First_Name"], row["Middle_Name"], row["Last_Name"]] if str(part).strip()
+            part
+            for part in [row["First_Name"], row["Middle_Name"], row["Last_Name"]]
+            if str(part).strip()
         )
         is_alert = display_name in physicians_with_multiple_npis
         row_class = "alert" if is_alert else ""

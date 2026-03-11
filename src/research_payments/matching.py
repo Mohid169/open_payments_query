@@ -83,10 +83,14 @@ def name_match_mask(
     )
 
     if query.middle_name and middle_col and middle_col in df.columns:
-        return first_mask & last_mask & middle_name_mask(
-            df[middle_col],
-            query.middle_name,
-            query.case_sensitive,
+        return (
+            first_mask
+            & last_mask
+            & middle_name_mask(
+                df[middle_col],
+                query.middle_name,
+                query.case_sensitive,
+            )
         )
 
     return first_mask & last_mask
