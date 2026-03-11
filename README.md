@@ -40,6 +40,23 @@ Or use the shell launcher:
 ./run_physician_query.sh --help
 ```
 
+## Running Tests
+
+Install dependencies in the local virtual environment, then run:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+The test suite includes:
+
+- unit tests for name matching
+- unit tests for dataset search and identity extraction
+- unit tests for multi-year aggregation
+- integration tests for single-physician CLI runs
+- integration tests for batch CLI runs
+- an entrypoint integration test for `research_extractor.py`
+
 ## Input Files
 
 Download CMS Open Payments research-payment CSVs and place them in the project directory, named exactly like this:

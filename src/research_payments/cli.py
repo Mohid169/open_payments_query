@@ -185,8 +185,8 @@ def process_physician_list(
     maybe_open_dashboard(dashboard_path)
 
 
-def main() -> None:
-    args = build_parser().parse_args()
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    args = build_parser().parse_args(argv)
     processor = ResearchPaymentsProcessor()
 
     if args.names_file:

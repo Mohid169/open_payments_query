@@ -86,9 +86,11 @@ class OpenPaymentsDataset:
         if matched_df.empty:
             return SearchResult(pd.DataFrame(), {})
 
-        return self._summarize_matches(matched_df)
+        return self._summarize_matches(matched_df, query)
 
-    def _summarize_matches(self, matched_df: pd.DataFrame) -> SearchResult:
+    def _summarize_matches(
+        self, matched_df: pd.DataFrame, query: PhysicianQuery
+    ) -> SearchResult:
         matched_df = matched_df.copy()
         matched_df["NPI"] = matched_df.apply(self._resolve_identifier, axis=1)
 
@@ -102,7 +104,7 @@ class OpenPaymentsDataset:
         metadata_rows = []
         for npi in totals_df["NPI"]:
             source_row = matched_df.loc[matched_df["NPI"] == npi].iloc[0]
-            physician_name, specialty = self._extract_identity(source_row)
+            physician_name, specialty = self._extract_identity(source_row, query)
             metadata_rows.append(
                 {
                     "NPI": npi,
@@ -139,12 +141,23 @@ class OpenPaymentsDataset:
 
         return f"UNKNOWN_{row.name}"
 
-    def _extract_identity(self, row: pd.Series) -> Tuple[str, str]:
+    def _extract_identity(
+        self, row: pd.Series, query: PhysicianQuery
+    ) -> Tuple[str, str]:
         assert self.schema is not None
 
         covered_first = self._clean_cell(row.get(self.schema.first_name_col))
         covered_last = self._clean_cell(row.get(self.schema.last_name_col))
-        if covered_first and covered_last:
+        if (
+            covered_first
+            and covered_last
+            and self._name_matches_query(
+                first_name=covered_first,
+                middle_name=self._clean_cell(row.get(self.schema.middle_name_col)),
+                last_name=covered_last,
+                query=query,
+            )
+        ):
             covered_middle = self._clean_cell(row.get(self.schema.middle_name_col))
             return self._join_name(
                 covered_first, covered_middle, covered_last
@@ -160,11 +173,22 @@ class OpenPaymentsDataset:
             last_name = self._clean_cell(
                 row.get(f"{self.schema.pi_prefix}{slot}_Last_Name")
             )
-            if first_name and last_name:
+            if first_name and last_name and self._name_matches_query(
+                first_name=first_name,
+                middle_name=middle_name,
+                last_name=last_name,
+                query=query,
+            ):
                 return (
                     self._join_name(first_name, middle_name, last_name),
                     "Principal Investigator",
                 )
+
+        if covered_first and covered_last:
+            covered_middle = self._clean_cell(row.get(self.schema.middle_name_col))
+            return self._join_name(
+                covered_first, covered_middle, covered_last
+            ), self._extract_specialty(row)
 
         return "Unknown", "Unknown"
 
@@ -196,3 +220,29 @@ class OpenPaymentsDataset:
         if pd.isna(value):
             return ""
         return str(value).strip()
+
+    @staticmethod
+    def _name_matches_query(
+        *,
+        first_name: str,
+        middle_name: str,
+        last_name: str,
+        query: PhysicianQuery,
+    ) -> bool:
+        normalized_first = first_name if query.case_sensitive else first_name.lower()
+        normalized_last = last_name if query.case_sensitive else last_name.lower()
+        query_first = query.first_name if query.case_sensitive else query.first_name.lower()
+        query_last = query.last_name if query.case_sensitive else query.last_name.lower()
+
+        if normalized_first != query_first or normalized_last != query_last:
+            return False
+
+        if not query.middle_name:
+            return True
+
+        normalized_middle = middle_name if query.case_sensitive else middle_name.lower()
+        query_middle = query.middle_name if query.case_sensitive else query.middle_name.lower()
+        if len(query_middle.replace(".", "").strip()) == 1:
+            return normalized_middle.startswith(query_middle.replace(".", ""))
+
+        return normalized_middle == query_middle
