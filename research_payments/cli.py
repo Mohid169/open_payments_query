@@ -15,7 +15,13 @@ from research_payments.reporting import (
     save_detail_csv,
     save_single_physician_results,
 )
-from research_payments.utils import format_currency_columns, parse_name, read_names_from_file, safe_filename, year_range_label
+from research_payments.utils import (
+    format_currency_columns,
+    parse_name,
+    read_names_from_file,
+    safe_filename,
+    year_range_label,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -25,10 +31,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Extract research payments for physicians from CMS Open Payments data."
     )
-    parser.add_argument("--names_file", type=str, help="Path to file containing physician names")
-    parser.add_argument("--years", type=int, nargs="+", default=[2015, 2016], help="Years to process")
+    parser.add_argument(
+        "--names_file", type=str, help="Path to file containing physician names"
+    )
+    parser.add_argument(
+        "--years", type=int, nargs="+", default=[2015, 2016], help="Years to process"
+    )
     parser.add_argument("--output_dir", type=str, help="Directory to save output files")
-    parser.add_argument("--case_sensitive", action="store_true", help="Use case-sensitive name matching")
+    parser.add_argument(
+        "--case_sensitive", action="store_true", help="Use case-sensitive name matching"
+    )
     parser.add_argument("--first_name", type=str, help="Physician first name")
     parser.add_argument("--middle_name", type=str, help="Physician middle name")
     parser.add_argument("--last_name", type=str, help="Physician last name")
@@ -58,7 +70,10 @@ def process_physician_list(
     physician_data_by_name: dict[str, pd.DataFrame | None] = {}
     summary_rows = []
     years_label = year_range_label(years_to_process)
-    summary_path = output_root / f"payment_summary_{years_label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    summary_path = (
+        output_root
+        / f"payment_summary_{years_label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    )
 
     for index, raw_name in enumerate(names, start=1):
         logger.info("Processing physician %s/%s: %s", index, len(names), raw_name)
@@ -75,7 +90,9 @@ def process_physician_list(
                 years_to_process=years_to_process,
                 case_sensitive=case_sensitive,
             )
-            display_name = " ".join(part for part in [first_name, middle_name or "", last_name] if part).strip()
+            display_name = " ".join(
+                part for part in [first_name, middle_name or "", last_name] if part
+            ).strip()
             physician_data_by_name[display_name] = result.dataframe
 
             row = {
@@ -90,20 +107,26 @@ def process_physician_list(
                 column = f"Payment_{year}_USD"
                 row[column] = (
                     float(result.dataframe[column].sum())
-                    if result.dataframe is not None and column in result.dataframe.columns
+                    if result.dataframe is not None
+                    and column in result.dataframe.columns
                     else 0.0
                 )
             summary_rows.append(row)
 
             if result.dataframe is not None and not result.dataframe.empty:
-                destination = output_root / f"research_payments_{safe_filename(raw_name)}_{years_label}.csv"
+                destination = (
+                    output_root
+                    / f"research_payments_{safe_filename(raw_name)}_{years_label}.csv"
+                )
                 save_detail_csv(result.dataframe, years_to_process, destination)
                 print(f"\nResults for {raw_name}:")
                 print(f"Total Payment: ${result.total_payment:,.2f}")
                 print(f"Total Entries: {result.total_entries}")
                 print(f"Saved to: {destination}")
             else:
-                print(f"\nNo detailed results for {raw_name}. Total payment: ${result.total_payment:,.2f}")
+                print(
+                    f"\nNo detailed results for {raw_name}. Total payment: ${result.total_payment:,.2f}"
+                )
         except Exception as exc:
             logger.error("Error processing physician %s: %s", raw_name, exc)
             error_row = {
@@ -136,7 +159,11 @@ def process_physician_list(
     if "Error" in summary_df.columns:
         ordered_columns.append("Error")
 
-    summary_df = summary_df[ordered_columns].sort_values("Total_Payment", ascending=False).reset_index(drop=True)
+    summary_df = (
+        summary_df[ordered_columns]
+        .sort_values("Total_Payment", ascending=False)
+        .reset_index(drop=True)
+    )
     summary_export = format_currency_columns(
         summary_df,
         [*[f"Payment_{year}_USD" for year in years_to_process], "Total_Payment"],
@@ -145,8 +172,15 @@ def process_physician_list(
     logger.info("Saved summary CSV to %s", summary_path)
 
     physicians_with_multiple_npis = collect_multi_npi_physicians(physician_data_by_name)
-    display_console_dashboard(summary_df, physicians_with_multiple_npis, years_to_process, physician_data_by_name)
-    dashboard_path = generate_html_dashboard(summary_df, physicians_with_multiple_npis, years_to_process, str(output_root))
+    display_console_dashboard(
+        summary_df,
+        physicians_with_multiple_npis,
+        years_to_process,
+        physician_data_by_name,
+    )
+    dashboard_path = generate_html_dashboard(
+        summary_df, physicians_with_multiple_npis, years_to_process, str(output_root)
+    )
     print(f"\nInteractive dashboard saved to: {dashboard_path}")
     maybe_open_dashboard(dashboard_path)
 
@@ -156,7 +190,9 @@ def main() -> None:
     processor = ResearchPaymentsProcessor()
 
     if args.names_file:
-        process_physician_list(args.names_file, args.years, args.output_dir, args.case_sensitive)
+        process_physician_list(
+            args.names_file, args.years, args.output_dir, args.case_sensitive
+        )
         return
 
     if args.first_name and args.last_name:

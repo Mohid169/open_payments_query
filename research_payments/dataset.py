@@ -35,7 +35,11 @@ class OpenPaymentsDataset:
 
         invalid_rows = int(df[PAYMENT_COLUMN].isna().sum())
         if invalid_rows:
-            logger.warning("Dropping %s rows with invalid payment amounts in %s", invalid_rows, self.csv_path)
+            logger.warning(
+                "Dropping %s rows with invalid payment amounts in %s",
+                invalid_rows,
+                self.csv_path,
+            )
             df = df.dropna(subset=[PAYMENT_COLUMN]).copy()
 
         self.dataframe = df
@@ -60,7 +64,10 @@ class OpenPaymentsDataset:
             pi_first_col = f"{self.schema.pi_prefix}{slot}_First_Name"
             pi_last_col = f"{self.schema.pi_prefix}{slot}_Last_Name"
             pi_middle_col = f"{self.schema.pi_prefix}{slot}_Middle_Name"
-            if pi_first_col in self.dataframe.columns and pi_last_col in self.dataframe.columns:
+            if (
+                pi_first_col in self.dataframe.columns
+                and pi_last_col in self.dataframe.columns
+            ):
                 pi_mask |= name_match_mask(
                     self.dataframe,
                     query,
@@ -70,7 +77,12 @@ class OpenPaymentsDataset:
                 )
 
         matched_df = self.dataframe.loc[covered_mask | pi_mask].copy()
-        logger.info("Found %s matching rows for %s in %s", len(matched_df), query.display_name, self.csv_path.name)
+        logger.info(
+            "Found %s matching rows for %s in %s",
+            len(matched_df),
+            query.display_name,
+            self.csv_path.name,
+        )
         if matched_df.empty:
             return SearchResult(pd.DataFrame(), {})
 
@@ -117,7 +129,9 @@ class OpenPaymentsDataset:
             return direct_npi
 
         for slot in PI_SLOTS:
-            pi_npi = str(row.get(f"{self.schema.pi_prefix}{slot}_NPI", "") or "").strip()
+            pi_npi = str(
+                row.get(f"{self.schema.pi_prefix}{slot}_NPI", "") or ""
+            ).strip()
             if pi_npi:
                 return pi_npi
 
@@ -134,14 +148,25 @@ class OpenPaymentsDataset:
         covered_last = str(row.get(self.schema.last_name_col, "") or "").strip()
         if covered_first and covered_last:
             covered_middle = str(row.get(self.schema.middle_name_col, "") or "").strip()
-            return self._join_name(covered_first, covered_middle, covered_last), self._extract_specialty(row)
+            return self._join_name(
+                covered_first, covered_middle, covered_last
+            ), self._extract_specialty(row)
 
         for slot in PI_SLOTS:
-            first_name = str(row.get(f"{self.schema.pi_prefix}{slot}_First_Name", "") or "").strip()
-            middle_name = str(row.get(f"{self.schema.pi_prefix}{slot}_Middle_Name", "") or "").strip()
-            last_name = str(row.get(f"{self.schema.pi_prefix}{slot}_Last_Name", "") or "").strip()
+            first_name = str(
+                row.get(f"{self.schema.pi_prefix}{slot}_First_Name", "") or ""
+            ).strip()
+            middle_name = str(
+                row.get(f"{self.schema.pi_prefix}{slot}_Middle_Name", "") or ""
+            ).strip()
+            last_name = str(
+                row.get(f"{self.schema.pi_prefix}{slot}_Last_Name", "") or ""
+            ).strip()
             if first_name and last_name:
-                return self._join_name(first_name, middle_name, last_name), "Principal Investigator"
+                return (
+                    self._join_name(first_name, middle_name, last_name),
+                    "Principal Investigator",
+                )
 
         return "Unknown", "Unknown"
 
@@ -150,7 +175,9 @@ class OpenPaymentsDataset:
 
         specialties = []
         for slot in PI_SLOTS:
-            specialty = str(row.get(f"{self.schema.specialty_prefix}_{slot}", "") or "").strip()
+            specialty = str(
+                row.get(f"{self.schema.specialty_prefix}_{slot}", "") or ""
+            ).strip()
             if specialty:
                 specialties.append(specialty)
 
@@ -162,4 +189,6 @@ class OpenPaymentsDataset:
 
     @staticmethod
     def _join_name(first_name: str, middle_name: str, last_name: str) -> str:
-        return " ".join(part for part in [first_name, middle_name, last_name] if part).strip()
+        return " ".join(
+            part for part in [first_name, middle_name, last_name] if part
+        ).strip()

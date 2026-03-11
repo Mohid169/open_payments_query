@@ -36,7 +36,9 @@ class ResearchPaymentsProcessor:
 
         return self._combine_yearly_results(yearly_results, years_to_process)
 
-    def _process_year(self, csv_path: Path, query: PhysicianQuery) -> Optional[pd.DataFrame]:
+    def _process_year(
+        self, csv_path: Path, query: PhysicianQuery
+    ) -> Optional[pd.DataFrame]:
         dataset = OpenPaymentsDataset(csv_path)
         search_queries = [query]
         if query.middle_name:
@@ -56,7 +58,12 @@ class ResearchPaymentsProcessor:
             except FileNotFoundError:
                 raise
             except Exception as exc:
-                logger.error("Error searching %s in %s: %s", search_query.display_name, csv_path, exc)
+                logger.error(
+                    "Error searching %s in %s: %s",
+                    search_query.display_name,
+                    csv_path,
+                    exc,
+                )
                 return None
 
             if not result.dataframe.empty:
@@ -87,16 +94,24 @@ class ResearchPaymentsProcessor:
 
         frames = []
         for year, year_df in yearly_results.items():
-            frames.append(year_df.rename(columns={"Total_Payment_USD": f"Payment_{year}_USD"}))
+            frames.append(
+                year_df.rename(columns={"Total_Payment_USD": f"Payment_{year}_USD"})
+            )
 
         combined_df = pd.concat(frames, ignore_index=True, sort=False)
         payment_columns = [f"Payment_{year}_USD" for year in years_to_process]
         for column in payment_columns:
             if column not in combined_df.columns:
                 combined_df[column] = 0.0
-            combined_df[column] = pd.to_numeric(combined_df[column], errors="coerce").fillna(0.0)
+            combined_df[column] = pd.to_numeric(
+                combined_df[column], errors="coerce"
+            ).fillna(0.0)
 
-        combined_df["Entry_Count"] = pd.to_numeric(combined_df["Entry_Count"], errors="coerce").fillna(0).astype(int)
+        combined_df["Entry_Count"] = (
+            pd.to_numeric(combined_df["Entry_Count"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
         combined_df = (
             combined_df.groupby("NPI", as_index=False)
             .agg(
@@ -110,7 +125,14 @@ class ResearchPaymentsProcessor:
         combined_df["Total_USD"] = combined_df[payment_columns].sum(axis=1)
         combined_df = combined_df.sort_values("Total_USD", ascending=False)
         combined_df = combined_df[
-            ["NPI", "Physician_Name", "Specialty", "Entry_Count", *payment_columns, "Total_USD"]
+            [
+                "NPI",
+                "Physician_Name",
+                "Specialty",
+                "Entry_Count",
+                *payment_columns,
+                "Total_USD",
+            ]
         ].reset_index(drop=True)
 
         return PhysicianResult(
