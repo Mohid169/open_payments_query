@@ -124,18 +124,16 @@ class OpenPaymentsDataset:
     def _resolve_identifier(self, row: pd.Series) -> str:
         assert self.schema is not None
 
-        direct_npi = str(row.get(self.schema.npi_col, "") or "").strip()
+        direct_npi = self._clean_cell(row.get(self.schema.npi_col))
         if direct_npi:
             return direct_npi
 
         for slot in PI_SLOTS:
-            pi_npi = str(
-                row.get(f"{self.schema.pi_prefix}{slot}_NPI", "") or ""
-            ).strip()
+            pi_npi = self._clean_cell(row.get(f"{self.schema.pi_prefix}{slot}_NPI"))
             if pi_npi:
                 return pi_npi
 
-        profile_id = str(row.get(self.schema.profile_id_col, "") or "").strip()
+        profile_id = self._clean_cell(row.get(self.schema.profile_id_col))
         if profile_id:
             return f"PROFILE_{profile_id}"
 
@@ -144,24 +142,18 @@ class OpenPaymentsDataset:
     def _extract_identity(self, row: pd.Series) -> Tuple[str, str]:
         assert self.schema is not None
 
-        covered_first = str(row.get(self.schema.first_name_col, "") or "").strip()
-        covered_last = str(row.get(self.schema.last_name_col, "") or "").strip()
+        covered_first = self._clean_cell(row.get(self.schema.first_name_col))
+        covered_last = self._clean_cell(row.get(self.schema.last_name_col))
         if covered_first and covered_last:
-            covered_middle = str(row.get(self.schema.middle_name_col, "") or "").strip()
+            covered_middle = self._clean_cell(row.get(self.schema.middle_name_col))
             return self._join_name(
                 covered_first, covered_middle, covered_last
             ), self._extract_specialty(row)
 
         for slot in PI_SLOTS:
-            first_name = str(
-                row.get(f"{self.schema.pi_prefix}{slot}_First_Name", "") or ""
-            ).strip()
-            middle_name = str(
-                row.get(f"{self.schema.pi_prefix}{slot}_Middle_Name", "") or ""
-            ).strip()
-            last_name = str(
-                row.get(f"{self.schema.pi_prefix}{slot}_Last_Name", "") or ""
-            ).strip()
+            first_name = self._clean_cell(row.get(f"{self.schema.pi_prefix}{slot}_First_Name"))
+            middle_name = self._clean_cell(row.get(f"{self.schema.pi_prefix}{slot}_Middle_Name"))
+            last_name = self._clean_cell(row.get(f"{self.schema.pi_prefix}{slot}_Last_Name"))
             if first_name and last_name:
                 return (
                     self._join_name(first_name, middle_name, last_name),
@@ -175,16 +167,14 @@ class OpenPaymentsDataset:
 
         specialties = []
         for slot in PI_SLOTS:
-            specialty = str(
-                row.get(f"{self.schema.specialty_prefix}_{slot}", "") or ""
-            ).strip()
+            specialty = self._clean_cell(row.get(f"{self.schema.specialty_prefix}_{slot}"))
             if specialty:
                 specialties.append(specialty)
 
         if specialties:
             return "; ".join(specialties)
 
-        fallback = str(row.get(self.schema.specialty_prefix, "") or "").strip()
+        fallback = self._clean_cell(row.get(self.schema.specialty_prefix))
         return fallback or "Unknown"
 
     @staticmethod
@@ -192,3 +182,9 @@ class OpenPaymentsDataset:
         return " ".join(
             part for part in [first_name, middle_name, last_name] if part
         ).strip()
+
+    @staticmethod
+    def _clean_cell(value: object) -> str:
+        if pd.isna(value):
+            return ""
+        return str(value).strip()

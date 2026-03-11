@@ -19,10 +19,18 @@ The repository now uses a small package instead of one large script:
   - `pandas`
   - `tabulate`
 
-Install dependencies with:
+Create a local virtual environment and install dependencies:
 
 ```bash
-python3 -m pip install pandas tabulate
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+If you prefer not to activate the environment, run commands with:
+
+```bash
+.venv/bin/python research_extractor.py --help
 ```
 
 ## Input Files
@@ -158,5 +166,5 @@ Check:
 Install dependencies again:
 
 ```bash
-python3 -m pip install pandas tabulate
+python3 -m pip install -r requirements.txt
 ```
