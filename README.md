@@ -1,6 +1,6 @@
 # Research Payments Extractor
 
-Extract and summarize CMS Open Payments research-payment data for one physician or a batch of physicians across multiple years.
+Build a searchable dashboard from a ZIP archive of CMS Open Payments research-payment CSVs, or run direct physician queries from the command line.
 
 ## Project Layout
 
@@ -69,9 +69,46 @@ Download CMS Open Payments research-payment CSVs and place them in the project d
 
 The year in the filename must match the year you pass on the command line.
 
+## Primary Workflow
+
+1. Put the dated research-payment CSV files into a single ZIP archive.
+2. Run the shell launcher with `--zip_file`.
+3. Open the generated HTML dashboard.
+4. Type a physician name into the search box.
+5. Review every indexed appearance of that name, including rows with and without a unique identifier.
+
+Example:
+
+```bash
+./run_physician_query.sh \
+  --zip_file research_files.zip \
+  --dashboard_output results/research_search_dashboard.html
+```
+
+The search dashboard shows:
+
+- physician name
+- role in the record
+- year
+- source file
+- total payment for that grouped appearance
+- number of instances
+- unique identifier when present
+- explicit missing-identifier state when not present
+
 ## Usage
 
 Run from the repository root.
+
+### ZIP Archive Search Dashboard
+
+Preferred command:
+
+```bash
+./run_physician_query.sh \
+  --zip_file research_files.zip \
+  --dashboard_output results/research_search_dashboard.html
+```
 
 ### Single Physician
 

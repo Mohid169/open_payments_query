@@ -1,4 +1,5 @@
 from pathlib import Path
+import zipfile
 
 import pandas as pd
 
@@ -104,3 +105,26 @@ def test_cli_batch_mode_creates_summary_dashboard_and_detail_files(
     summary_df = pd.read_csv(summary_files[0])
     assert set(summary_df["Full_Name"]) == {"Benjamin G Domb", "Alice M Smith"}
     assert set(summary_df["Total_Payment"]) == {200.0, 90.0}
+
+
+def test_cli_zip_mode_generates_search_dashboard(tmp_path: Path, monkeypatch, capsys) -> None:
+    csv_path = tmp_path / "2021_rsh_payments.csv"
+    write_open_payments_csv(
+        csv_path,
+        [covered_row(first_name="Benjamin", middle_name="G", last_name="Domb", npi="1154454635", amount=200.0)],
+    )
+    zip_path = tmp_path / "archive.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.write(csv_path, arcname="2021_rsh_payments.csv")
+
+    dashboard_path = tmp_path / "search_dashboard.html"
+    monkeypatch.chdir(tmp_path)
+
+    main(["--zip_file", str(zip_path), "--dashboard_output", str(dashboard_path)])
+
+    output = capsys.readouterr().out
+    assert "Search dashboard saved to:" in output
+    assert dashboard_path.exists()
+    dashboard_html = dashboard_path.read_text(encoding="utf-8")
+    assert "Benjamin G Domb" in dashboard_html
+    assert "Missing unique identifier" in dashboard_html

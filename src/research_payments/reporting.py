@@ -359,3 +359,181 @@ def maybe_open_dashboard(dashboard_path: str) -> None:
             webbrowser.open("file://" + os.path.abspath(dashboard_path))
     except Exception as exc:
         logger.error("Error opening dashboard: %s", exc)
+
+
+def generate_zip_search_dashboard(
+    records: List[Dict[str, object]],
+    zip_filename: str,
+    output_path: Path,
+) -> str:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    serialized_records = []
+    years = sorted({record["year"] for record in records if record["year"] != "Unknown"})
+    for record in records:
+        serialized_records.append(
+            {
+                "display_name": str(record["display_name"]),
+                "display_name_normalized": str(record["display_name"]).lower(),
+                "first_name": str(record["first_name"]),
+                "middle_name": str(record["middle_name"]),
+                "last_name": str(record["last_name"]),
+                "role": str(record["role"]),
+                "year": str(record["year"]),
+                "identifier": str(record["identifier"]),
+                "identifier_type": str(record["identifier_type"]),
+                "specialty": str(record["specialty"]),
+                "source_file": str(record["source_file"]),
+                "total_payment": round(float(record["total_payment"]), 2),
+                "instance_count": int(record["instance_count"]),
+            }
+        )
+
+    html_output = f"""<!DOCTYPE html>
+<html>
+<head>
+  <title>Research Payments Search Dashboard</title>
+  <style>
+    :root {{
+      --bg: #f5f1e8;
+      --panel: #fffaf0;
+      --ink: #1e2a24;
+      --muted: #6b726d;
+      --line: #d6cfc1;
+      --accent: #14532d;
+      --accent-soft: #dff3e7;
+      --warn: #8a3b12;
+    }}
+    body {{ margin: 0; font-family: Georgia, serif; background: linear-gradient(180deg, #f7f4ed 0%, #ece6d9 100%); color: var(--ink); }}
+    .shell {{ max-width: 1180px; margin: 0 auto; padding: 40px 24px 64px; }}
+    .hero {{ display: grid; gap: 12px; margin-bottom: 28px; }}
+    .eyebrow {{ color: var(--accent); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }}
+    h1 {{ margin: 0; font-size: 42px; line-height: 1.05; }}
+    .subcopy {{ max-width: 760px; color: var(--muted); font-size: 17px; line-height: 1.5; }}
+    .panel {{ background: rgba(255, 250, 240, 0.88); border: 1px solid var(--line); border-radius: 18px; padding: 22px; box-shadow: 0 18px 40px rgba(38, 32, 23, 0.08); }}
+    .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }}
+    .stat {{ background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }}
+    .stat-label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }}
+    .stat-value {{ font-size: 28px; margin-top: 8px; }}
+    .search-bar {{ display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 16px; }}
+    input {{ width: 100%; border: 1px solid var(--line); border-radius: 999px; padding: 16px 20px; font-size: 18px; background: white; }}
+    button {{ border: 0; border-radius: 999px; padding: 0 22px; background: var(--accent); color: white; font-size: 15px; cursor: pointer; }}
+    .hint {{ color: var(--muted); font-size: 14px; margin-bottom: 18px; }}
+    .status {{ margin-bottom: 18px; font-size: 15px; color: var(--warn); }}
+    .result-list {{ display: grid; gap: 14px; }}
+    .result-card {{ background: white; border: 1px solid var(--line); border-radius: 14px; padding: 18px; }}
+    .result-head {{ display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }}
+    .result-name {{ font-size: 22px; }}
+    .badges {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+    .badge {{ background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 6px 10px; font-size: 12px; }}
+    .badge.missing {{ background: #f7e5dc; color: var(--warn); }}
+    .detail-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; color: var(--muted); font-size: 14px; }}
+    .detail-grid strong {{ display: block; color: var(--ink); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }}
+    .empty {{ padding: 28px 0; color: var(--muted); }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero">
+      <div class="eyebrow">Research Payments Search</div>
+      <h1>Search every physician appearance across the uploaded archive.</h1>
+      <div class="subcopy">Drop one ZIP archive of dated CMS research-payment CSVs, generate this dashboard, then type a name to inspect every matching appearance with and without a unique identifier.</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Archive</div><div class="stat-value">{html.escape(zip_filename)}</div></div>
+      <div class="stat"><div class="stat-label">Indexed Matches</div><div class="stat-value">{len(serialized_records):,}</div></div>
+      <div class="stat"><div class="stat-label">Years</div><div class="stat-value">{', '.join(years) if years else 'Unknown'}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="search-bar">
+        <input id="nameInput" type="text" placeholder="Type a physician name, e.g. Benjamin Domb" />
+        <button id="searchButton">Search</button>
+      </div>
+      <div class="hint">Search is token-based and case-insensitive. A result remains if every search token appears in the physician name.</div>
+      <div class="status" id="status">No search run yet.</div>
+      <div class="result-list" id="results"></div>
+    </div>
+  </div>
+
+  <script>
+    const records = {json.dumps(serialized_records)};
+
+    function currency(value) {{
+      return '$' + Number(value).toLocaleString(undefined, {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
+    }}
+
+    function render(recordsToRender, query) {{
+      const container = document.getElementById('results');
+      const status = document.getElementById('status');
+      container.innerHTML = '';
+
+      if (!query) {{
+        status.textContent = 'No search run yet.';
+        container.innerHTML = '<div class="empty">Enter a physician name to view matching appearances.</div>';
+        return;
+      }}
+
+      status.textContent = `${{recordsToRender.length}} grouped matches for "${{query}}"`;
+      if (recordsToRender.length === 0) {{
+        container.innerHTML = '<div class="empty">No matching physician appearances were found in the archive.</div>';
+        return;
+      }}
+
+      for (const record of recordsToRender) {{
+        const badgeClass = record.identifier ? 'badge' : 'badge missing';
+        const identifierText = record.identifier ? `${{record.identifier_type}}: ${{record.identifier}}` : 'Missing unique identifier';
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `
+          <div class="result-head">
+            <div class="result-name">${{record.display_name}}</div>
+            <div class="badges">
+              <span class="badge">${{record.role}}</span>
+              <span class="${{badgeClass}}">${{identifierText}}</span>
+            </div>
+          </div>
+          <div class="detail-grid">
+            <div><strong>Year</strong>${{record.year}}</div>
+            <div><strong>Instances</strong>${{record.instance_count}}</div>
+            <div><strong>Total Payment</strong>${{currency(record.total_payment)}}</div>
+            <div><strong>Specialty</strong>${{record.specialty || 'Unknown'}}</div>
+            <div><strong>Source File</strong>${{record.source_file}}</div>
+          </div>
+        `;
+        container.appendChild(card);
+      }}
+    }}
+
+    function search() {{
+      const rawQuery = document.getElementById('nameInput').value.trim();
+      const tokens = rawQuery.toLowerCase().split(/\\s+/).filter(Boolean);
+      if (tokens.length === 0) {{
+        render([], '');
+        return;
+      }}
+
+      const matches = records.filter((record) =>
+        tokens.every((token) => record.display_name_normalized.includes(token))
+      );
+      matches.sort((left, right) => right.total_payment - left.total_payment);
+      render(matches, rawQuery);
+    }}
+
+    document.getElementById('searchButton').addEventListener('click', search);
+    document.getElementById('nameInput').addEventListener('keydown', (event) => {{
+      if (event.key === 'Enter') {{
+        search();
+      }}
+    }});
+
+    render([], '');
+  </script>
+</body>
+</html>
+"""
+
+    with open(output_path, "w", encoding="utf-8") as handle:
+        handle.write(html_output)
+
+    return str(output_path)

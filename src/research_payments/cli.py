@@ -6,10 +6,12 @@ from typing import Optional, Sequence
 
 import pandas as pd
 
+from research_payments.archive_index import build_searchable_records_from_zip
 from research_payments.processor import ResearchPaymentsProcessor
 from research_payments.reporting import (
     collect_multi_npi_physicians,
     display_console_dashboard,
+    generate_zip_search_dashboard,
     generate_html_dashboard,
     maybe_open_dashboard,
     save_detail_csv,
@@ -41,10 +43,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--case_sensitive", action="store_true", help="Use case-sensitive name matching"
     )
+    parser.add_argument("--zip_file", type=str, help="ZIP archive containing dated research CSV files")
+    parser.add_argument("--dashboard_output", type=str, help="Output HTML path for ZIP-search dashboard")
     parser.add_argument("--first_name", type=str, help="Physician first name")
     parser.add_argument("--middle_name", type=str, help="Physician middle name")
     parser.add_argument("--last_name", type=str, help="Physician last name")
     return parser
+
+
+def build_zip_dashboard(zip_file: str, dashboard_output: Optional[str] = None) -> str:
+    zip_path = Path(zip_file)
+    output_path = (
+        Path(dashboard_output)
+        if dashboard_output
+        else Path(f"research_payments_search_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")
+    )
+    records = build_searchable_records_from_zip(zip_path)
+    dashboard_path = generate_zip_search_dashboard(records, zip_path.name, output_path)
+    print(f"\nSearch dashboard saved to: {dashboard_path}")
+    print("Open the HTML file and type a physician name into the search box.")
+    maybe_open_dashboard(dashboard_path)
+    return dashboard_path
 
 
 def process_physician_list(
@@ -188,6 +207,10 @@ def process_physician_list(
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = build_parser().parse_args(argv)
     processor = ResearchPaymentsProcessor()
+
+    if args.zip_file:
+        build_zip_dashboard(args.zip_file, args.dashboard_output)
+        return
 
     if args.names_file:
         process_physician_list(
