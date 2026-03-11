@@ -1,6 +1,10 @@
 *.csv
 *.txt
-.DS_STORE
+!requirements.txt
+.DS_Store
 
 .html
 *.html
+__pycache__/
+*.py[cod]
+.venv/
