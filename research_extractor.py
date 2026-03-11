@@ -21,6 +21,7 @@ def get_research_payments_for_physician(
     physician_first_name,
     physician_middle=None,
     case_sensitive=False,
+    strict_middle_name=False,
 ):
     """
     Reads the CMS Open Payments Research CSV file and returns payment information for a physician.
@@ -38,6 +39,7 @@ def get_research_payments_for_physician(
     physician_first_name (str): Physician's first name
     physician_middle (str, optional): Physician's middle name or initial
     case_sensitive (bool, optional): Whether to perform case-sensitive name matching
+    strict_middle_name (bool, optional): Whether to strictly match middle names when checking without a middle name
 
     Returns:
     tuple or float: (DataFrame with NPIs and associated total payments, dict of entry counts per NPI),
@@ -450,6 +452,7 @@ def process_physician(
                     first_name,
                     physician_middle=middle_name,
                     case_sensitive=case_sensitive,
+                    strict_middle_name=True,
                 )
 
                 logger.info("Checking without middle name")
@@ -459,6 +462,7 @@ def process_physician(
                     first_name,
                     physician_middle=None,
                     case_sensitive=case_sensitive,
+                    strict_middle_name=True,
                 )
 
                 # Combine results from both searches
@@ -503,6 +507,7 @@ def process_physician(
                     first_name,
                     physician_middle=None,
                     case_sensitive=case_sensitive,
+                    strict_middle_name=True,
                 )
 
             # Handle the result
@@ -513,7 +518,9 @@ def process_physician(
 
                 # Update the global entry counts
                 for npi, count in entry_counts.items():
-                    all_entry_counts[npi] = all_entry_counts.get(npi, 0) + count
+                    all_entry_counts[npi] = all_entry_counts.get(
+                        npi, 0
+                    ) + count
 
                 # Collect all unique NPIs
                 all_npis.update(df_result["NPI"].tolist())
