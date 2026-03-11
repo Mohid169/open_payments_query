@@ -33,8 +33,6 @@ def safe_filename(value: str) -> str:
 def format_currency_columns(df: pd.DataFrame, columns: Sequence[str]) -> pd.DataFrame:
     formatted = df.copy()
     for column in columns:
-        formatted[column] = pd.to_numeric(formatted[column], errors="coerce").fillna(
-            0.0
-        )
+        formatted[column] = pd.to_numeric(formatted[column], errors="coerce").fillna(0.0)
         formatted[column] = formatted[column].map(lambda value: f"{value:.2f}")
     return formatted

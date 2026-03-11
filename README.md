@@ -4,13 +4,14 @@ Extract and summarize CMS Open Payments research-payment data for one physician 
 
 ## Project Layout
 
-The repository now uses a small package instead of one large script:
+The code is organized in a standard `src/` layout:
 
-- `research_extractor.py`: thin entrypoint
-- `research_payments/cli.py`: command-line flow
-- `research_payments/dataset.py`: CSV loading and matching
-- `research_payments/processor.py`: multi-year aggregation
-- `research_payments/reporting.py`: CSV, console, and HTML output
+- `research_extractor.py`: compatibility entrypoint
+- `run_physician_query.sh`: user-facing shell launcher
+- `src/research_payments/cli.py`: command-line flow
+- `src/research_payments/dataset.py`: CSV loading and matching
+- `src/research_payments/processor.py`: multi-year aggregation
+- `src/research_payments/reporting.py`: CSV, console, and HTML output
 
 ## Requirements
 
@@ -33,6 +34,12 @@ If you prefer not to activate the environment, run commands with:
 .venv/bin/python research_extractor.py --help
 ```
 
+Or use the shell launcher:
+
+```bash
+./run_physician_query.sh --help
+```
+
 ## Input Files
 
 Download CMS Open Payments research-payment CSVs and place them in the project directory, named exactly like this:
@@ -50,6 +57,18 @@ The year in the filename must match the year you pass on the command line.
 Run from the repository root.
 
 ### Single Physician
+
+Preferred command:
+
+```bash
+./run_physician_query.sh \
+  --first_name Benjamin \
+  --middle_name G \
+  --last_name Domb \
+  --years 2015 2016
+```
+
+Direct Python command:
 
 ```bash
 python3 research_extractor.py \
@@ -87,7 +106,7 @@ John A Doe
 Run:
 
 ```bash
-python3 research_extractor.py \
+./run_physician_query.sh \
   --names_file physicians.txt \
   --years 2019 2020 2021 \
   --output_dir results
