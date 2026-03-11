@@ -4,7 +4,9 @@ from research_payments.processor import ResearchPaymentsProcessor
 from tests.helpers import covered_row, write_open_payments_csv
 
 
-def test_processor_combines_years_and_keeps_distinct_payment_columns(tmp_path: Path, monkeypatch) -> None:
+def test_processor_combines_years_and_keeps_distinct_payment_columns(
+    tmp_path: Path, monkeypatch
+) -> None:
     write_open_payments_csv(
         tmp_path / "2015_rsh_payments.csv",
         [
@@ -48,7 +50,9 @@ def test_processor_combines_years_and_keeps_distinct_payment_columns(tmp_path: P
     assert row["Total_USD"] == 400.0
 
 
-def test_processor_middle_name_dual_search_does_not_double_count_same_year(tmp_path: Path, monkeypatch) -> None:
+def test_processor_middle_name_dual_search_does_not_double_count_same_year(
+    tmp_path: Path, monkeypatch
+) -> None:
     write_open_payments_csv(
         tmp_path / "2015_rsh_payments.csv",
         [

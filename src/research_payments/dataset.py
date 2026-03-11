@@ -173,11 +173,15 @@ class OpenPaymentsDataset:
             last_name = self._clean_cell(
                 row.get(f"{self.schema.pi_prefix}{slot}_Last_Name")
             )
-            if first_name and last_name and self._name_matches_query(
-                first_name=first_name,
-                middle_name=middle_name,
-                last_name=last_name,
-                query=query,
+            if (
+                first_name
+                and last_name
+                and self._name_matches_query(
+                    first_name=first_name,
+                    middle_name=middle_name,
+                    last_name=last_name,
+                    query=query,
+                )
             ):
                 return (
                     self._join_name(first_name, middle_name, last_name),
@@ -231,8 +235,12 @@ class OpenPaymentsDataset:
     ) -> bool:
         normalized_first = first_name if query.case_sensitive else first_name.lower()
         normalized_last = last_name if query.case_sensitive else last_name.lower()
-        query_first = query.first_name if query.case_sensitive else query.first_name.lower()
-        query_last = query.last_name if query.case_sensitive else query.last_name.lower()
+        query_first = (
+            query.first_name if query.case_sensitive else query.first_name.lower()
+        )
+        query_last = (
+            query.last_name if query.case_sensitive else query.last_name.lower()
+        )
 
         if normalized_first != query_first or normalized_last != query_last:
             return False
@@ -241,7 +249,9 @@ class OpenPaymentsDataset:
             return True
 
         normalized_middle = middle_name if query.case_sensitive else middle_name.lower()
-        query_middle = query.middle_name if query.case_sensitive else query.middle_name.lower()
+        query_middle = (
+            query.middle_name if query.case_sensitive else query.middle_name.lower()
+        )
         if len(query_middle.replace(".", "").strip()) == 1:
             return normalized_middle.startswith(query_middle.replace(".", ""))
 

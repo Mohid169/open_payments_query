@@ -24,7 +24,9 @@ def test_python_entrypoint_runs_from_repo_root(tmp_path: Path) -> None:
 
     env = os.environ.copy()
     existing_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(repo_root / "src") + (os.pathsep + existing_path if existing_path else "")
+    env["PYTHONPATH"] = str(repo_root / "src") + (
+        os.pathsep + existing_path if existing_path else ""
+    )
 
     result = subprocess.run(
         [

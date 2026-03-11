@@ -5,7 +5,9 @@ from research_payments.models import PhysicianQuery
 from tests.helpers import covered_row, pi_row, write_open_payments_csv
 
 
-def test_dataset_search_matches_covered_recipient_and_sums_payments(tmp_path: Path) -> None:
+def test_dataset_search_matches_covered_recipient_and_sums_payments(
+    tmp_path: Path,
+) -> None:
     csv_path = tmp_path / "2015_rsh_payments.csv"
     write_open_payments_csv(
         csv_path,
@@ -41,7 +43,9 @@ def test_dataset_search_matches_covered_recipient_and_sums_payments(tmp_path: Pa
     assert row["Total_Payment_USD"] == 250.0
 
 
-def test_dataset_search_matches_principal_investigator_when_covered_name_differs(tmp_path: Path) -> None:
+def test_dataset_search_matches_principal_investigator_when_covered_name_differs(
+    tmp_path: Path,
+) -> None:
     csv_path = tmp_path / "2016_rsh_payments.csv"
     write_open_payments_csv(
         csv_path,

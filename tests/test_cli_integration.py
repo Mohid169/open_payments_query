@@ -6,7 +6,9 @@ from research_payments.cli import main
 from tests.helpers import covered_row, write_open_payments_csv
 
 
-def test_cli_single_physician_creates_detail_csv(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_cli_single_physician_creates_detail_csv(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     write_open_payments_csv(
         tmp_path / "2015_rsh_payments.csv",
         [
@@ -48,7 +50,9 @@ def test_cli_single_physician_creates_detail_csv(tmp_path: Path, monkeypatch, ca
     assert detail_df.loc[0, "Physician_Name"] == "Benjamin G Domb"
 
 
-def test_cli_batch_mode_creates_summary_dashboard_and_detail_files(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_cli_batch_mode_creates_summary_dashboard_and_detail_files(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     write_open_payments_csv(
         tmp_path / "2015_rsh_payments.csv",
         [
